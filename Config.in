@@ -1,0 +1,20 @@
+#
+# the configs for app AG_WAN
+#
+
+config AOS_APP_AG_WAN
+    bool "AOS_APP_AG_WAN"
+    select AOS_COMP_OSAL_AOS
+    select AOS_COMP_CLI
+    select AOS_COMP_SDK_DEVMODEL
+    select AOS_COMP_CJSON
+    select AOS_COMP_SDK_MQTT
+
+if AOS_APP_AG_WAN
+config ENABLE_OTA
+    bool "Enable OTA"
+    default y
+    select AOS_COMP_OTA
+
+# Add more configs here ...
+endif
