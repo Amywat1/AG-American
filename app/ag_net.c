@@ -130,7 +130,7 @@ int xp_net_init(void)
 {
     int ret = -1;
 
-    xp_mqtt_region_set(region_singapore);
+    xp_mqtt_region_set(region_american);
     ret = xp_mqtt_init(&mqtt);
     if(ret != 0){
         LOG_UPLOAD("xp_mqtt_init failed!");

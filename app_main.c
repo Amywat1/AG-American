@@ -19,7 +19,7 @@
 #include "../../../1km/common/boardio.h"
 
 #define APP_name "AG"
-#define APP_version "AG-0.0.7"
+#define APP_version "AG-5.0.7"
 
 static char product_key[]   ="k01omUSTr04";         // product_key 和 product_secret 匹配对应产品
 static char product_secret[]="dlStncmKY3ja7AXY";
@@ -87,6 +87,18 @@ int application_start(int argc, char *argv[])
     // xp_error_state_init();
     extern int xp_service_init(void);
     xp_service_init();
+    char buf[100] = {0};
+    strcpy(buf, "AGT202402260002");
+    aos_kv_set("device_name", buf, strlen(buf), 1);
+    memset(buf, 0, sizeof(buf));
+    strcpy(buf, "8ec8fc610123260c0d203d7be229be87");
+    aos_kv_set("device_secret", buf, strlen(buf), 1);
+    memset(buf, 0, sizeof(buf));
+    strcpy(buf, "k0t3w4hquxK");
+    aos_kv_set("product_key", buf, strlen(buf), 1);
+    memset(buf, 0, sizeof(buf));
+    strcpy(buf, "5VNICtgacpzkL3VO");
+    aos_kv_set("product_secret", buf, strlen(buf), 1);
     extern int xp_net_init(void);           //最后初始化net，回调函数赋值
     xp_net_init();
     while(1)
