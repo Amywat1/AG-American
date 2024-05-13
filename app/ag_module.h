@@ -29,6 +29,8 @@ typedef enum{
 	APP_CRL_GATE_1_CLOSE,
 	APP_CRL_GATE_2_OPEN,
 	APP_CRL_GATE_2_CLOSE,
+	APP_CRL_GATE_3_OPEN,
+	APP_CRL_GATE_3_CLOSE,
 	APP_CRL_CONVEYOR_1,
 	APP_CRL_CONVEYOR_2,
 	APP_CRL_CONVEYOR_3,
@@ -121,9 +123,27 @@ typedef struct{
 	bool					isCalibrated;		//是否已进行电流校准
 } Type_BrushInfo_Def;
 
+typedef struct{
+    uint16_t startSkirtBrush;
+    uint16_t startShampoo;
+    uint16_t startTopBrush;
+    uint16_t startFrontBrush;
+    uint16_t startBackBrush;
+    uint16_t startWaxwater;
+    uint16_t startDrying;
+    uint16_t endHighPump;
+    uint16_t endSkirtBrush;
+    uint16_t endShampoo;
+    uint16_t endTopBrush;
+    uint16_t endFrontBrush;
+    uint16_t endBackBrush;
+    uint16_t endWaxwater;
+    uint16_t endDrying;
+} Type_CarProcPosInfo_Def;
+
 extern uint64_t get_voice_start_time_stamp(void);
-extern void module_lock_voice_mutex(uint16_t overTime);
-extern void module_unlock_voice_mutex(void);
+extern int module_lock_voice_mutex(uint16_t overTime);
+extern int module_unlock_voice_mutex(void);
 extern int xp_service_module_init(void);
 extern void voice_play_set(Type_AgVoicePos_Enum pos, Type_AgVoice_Enum mode);
 extern bool is_dev_move_sta_idle(Type_DriverIndex_Enum devIndex);
@@ -145,6 +165,7 @@ extern bool get_is_allow_next_car_wash_flag(void);
 extern void set_new_order_car_id(uint8_t newOrderId);
 extern int  get_work_state(uint8_t washId);
 extern void wash_crl_variable_init(void);
+extern Type_CarProcPosInfo_Def *get_washProcPos_Obj(void);
 #endif
 
 

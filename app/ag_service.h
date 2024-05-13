@@ -32,6 +32,14 @@ typedef enum {
     STA_STOP,                               //停止状态，机器暂停运营中
 } Type_ServiceState_Enum;
 
+/* 洗车模式枚举 */
+typedef enum{
+    NULL_WASH = 0,
+	NORMAL_WASH,	    //普通洗
+	QUICK_WASH,			//极速洗
+	FINE_WASH			//打蜡精洗
+} Type_WashMode_Enum;
+
 //状态点位——订单
 typedef struct{
     int                 orderNumber;
@@ -40,6 +48,7 @@ typedef struct{
 
 //状态点位——洗车判断
 typedef struct{
+    int                 offlineOrderNum;
     int                 completeOrderNum;
     bool                carAhead;
     bool                stopOk;
@@ -71,10 +80,18 @@ typedef struct{
     // bool                vfdReadyCurrent;
     // bool                brushInit;
     int                 sewageHighTime;
+    int                 readyAreaPulse;
+    int                 workAreaPulse;
     int                 completeAreaPulse;
     int                 frontLeftPutterPos;
     int                 frontRightPutterPos;
+    int                 backLeftPutterPos;
+    int                 backRightPutterPos;
     int                 topBrushCurrent;
+    int                 frontLeftBrushCurrent;
+    int                 frontRightBrushCurrent;
+    int                 backLeftBrushCurrent;
+    int                 backRightBrushCurrent;
     char                version[10];
     char                deviceModel[15];
     int                 startCnt;
@@ -223,25 +240,22 @@ typedef struct{
     int shampooEndPos;
     int topBrushStartPos;
     int topBrushEndPos;
-    int frontBrushHeadPos;
     int frontBrushStartPos;
-    int backBrushStartPos;
-    int frontBrushStopClosePos;
-    int backBrushStopClosePos;
-    int backBrushEndPos;
     int frontBrushTailEndPos;
+    int backBrushStartPos;
+    int backBrushEndPos;
     int waxwaterStartPos;
     int waxwaterEndPos;
     int dryerStartPos;
     int dryerEndPos;
-    int completeAreaHeadStopPos;
+    // int completeAreaHeadStopPos;
     // int frontBrushHeadStartCurrent;
     // int topCurrentAddMin;
     // int topCurrentAddMid;
     // int topCurrentAddMax;
-    int readyAreaMoveMin;
-    int dryerDayFreq;
-    int dryerNightFreq;
+    // int readyAreaMoveMin;
+    // int dryerDayFreq;
+    // int dryerNightFreq;
 } Type_ModelAdjustCmd_Def;
 
 //命令点位
@@ -252,9 +266,12 @@ typedef struct{
     bool washFlag2;
     //远程控制
     bool backHome;
+    bool safeBackHome;
     bool startWash;
     bool stop;
     bool customStopWash;
+    bool electricalReset;
+    bool cancelOrder;
     bool devClose;
     //手动控制
     bool backSkirtBrushOut;
@@ -262,9 +279,11 @@ typedef struct{
     bool backSkirtBrushWater;
     bool sync;
     bool gate1Open;
-    bool gate1CLose;
+    bool gate1Close;
     bool gate2Open;
     bool gate2Close;
+    bool gate3Open;
+    bool gate3Close;
     bool conveyorMove1;
     bool conveyorMove2;
     bool conveyorMove3;
@@ -307,6 +326,8 @@ typedef struct{
     Type_ModelAdjustCmd_Def     adjust;
     //通讯测试
     bool communicateTest;
+    //模式选择
+    int washMode;
     //其它
     bool log;
     char debug[35];
@@ -323,15 +344,20 @@ typedef enum{
     CMD_WASH_FALG_2,
     //远程控制
     CMD_HOME,
+    CMD_SAFE_HOME,
     CMD_START_WASH,
     CMD_STOP,
     CMD_CUSTOM_STOP_WASH,
+    CMD_ELECTRICAL_RESET,
+    CMD_CANCEL_ORDER,
     CMD_DEV_CLOSE,
     //手动控制
     CMD_GATE_1_OPEN,
     CMD_GATE_1_CLOSE,
     CMD_GATE_2_OPEN,
     CMD_GATE_2_CLOSE,
+    CMD_GATE_3_OPEN,
+    CMD_GATE_3_CLOSE,
     CMD_CONVEYOR_1,
     CMD_CONVEYOR_2,
     CMD_CONVEYOR_3,
@@ -403,27 +429,17 @@ typedef enum{
     CMD_SHAMPOO_END_POS,
     CMD_TOP_BRUSH_START_POS,
     CMD_TOP_BRUSH_END_POS,
-    CMD_FRONT_BRUSH_HEAD_POS,
     CMD_FRONT_BRUSH_START_POS,
     CMD_BACK_BRUSH_START_POS,
-    CMD_FRONT_BRUSH_STOP_CLOSE_POS,
-    CMD_BACK_BRUSH_STOP_CLOSE_POS,
     CMD_BACK_BRUSH_END_POS,
-    CMD_FRONT_BRUSH_TAIL_END_POS,
+    CMD_FRONT_BRUSH_END_POS,
     CMD_WAXWATER_START_POS,
     CMD_WAXWATER_END_POS,
     CMD_DRYER_START_POS,
     CMD_DRYER_END_POS,
-    CMD_COMPLETE_AREA_HEAD_STOP_POS,
-    // CMD_FRONT_BRUSH_HEAD_START_CURRENT,
-    // CMD_TOP_CURRENT_ADDMIN,
-    // CMD_TOP_CURRENT_ADDMID,
-    // CMD_TOP_CURRENT_ADDMAX,
-    CMD_READY_AREA_MOVE_MIN,
-    CMD_DRYER_DAY_FREQ,
-    CMD_DRYER_NIGHT_FREQ,
     //其它
     CMD_COMMUNICATION_TEST,
+    CMD_WASH_MODE,
     CMD_LOG,
     CMD_DEBUG,
     CMD_NUM                   //命令总数
@@ -450,10 +466,10 @@ typedef struct
 } Type_PropertyNode_Def;
 
 typedef struct {
-	// uint16_t washQuick;				// 快速洗单量
-	// uint16_t washNormal;			// 标准洗单量
-	// uint16_t washFine;				// 精致洗单量
-	uint16_t totals;			    // 总单量
+	uint32_t washQuick;				// 快速洗单量
+	uint32_t washNormal;			// 标准洗单量
+	uint32_t washFine;				// 精致洗单量
+	uint32_t totals;			    // 总单量
 } Type_OrdersNum_Def;
 
 typedef struct {
@@ -461,9 +477,11 @@ typedef struct {
     bool                isNewOrderSave;
     bool                isNewFailedOrderSave;
     bool                isNewCompleteOrderSave;
+    bool                isNewOfflineOrderSave;
     bool                isNewDateSave;
-    uint16_t            completeCnt;
-    uint16_t            failCnt;
+    uint32_t            completeCnt;
+    uint32_t            failCnt;
+    uint32_t            offlineStartNum;
     Type_OrdersNum_Def  today;
     Type_OrdersNum_Def  month[12];
     Type_OrdersNum_Def  daily[12][31];

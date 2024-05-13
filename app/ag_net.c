@@ -231,6 +231,7 @@ void xp_iot_data_register_thread(void *arg)
     err &= IOT_ADD_PROPERTY_NODE("sts_order_number_2",	        localModelSts->order2.orderNumber,  TYPE_Int,   0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_work_state_2",	        localModelSts->order2.workState,    TYPE_Int,	0,	0);
     //洗车判断
+    err &= IOT_ADD_PROPERTY_NODE("sts_offline_order",	        localModelSts->washInfo.offlineOrderNum,    TYPE_Int,0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_complete_order",	        localModelSts->washInfo.completeOrderNum,   TYPE_Int,0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_car_head",	            localModelSts->washInfo.carAhead,       TYPE_Bool,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_stop_ok",	                localModelSts->washInfo.stopOk,         TYPE_Bool,	0,	0);
@@ -252,10 +253,18 @@ void xp_iot_data_register_thread(void *arg)
     //监控数据
     err &= IOT_ADD_PROPERTY_NODE("sts_car_entry",	            localModelSts->minitor.carEntry,            TYPE_Bool,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_sewage_high_time",	    localModelSts->minitor.sewageHighTime,      TYPE_Int,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE("sts_ready_pulse",	            localModelSts->minitor.readyAreaPulse,      TYPE_Int,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE("sts_work_pulse",	            localModelSts->minitor.workAreaPulse,       TYPE_Int,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_complete_pulse",	        localModelSts->minitor.completeAreaPulse,   TYPE_Int,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_left_front_pos",	        localModelSts->minitor.frontLeftPutterPos,  TYPE_Int,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_right_front_pos",	        localModelSts->minitor.frontRightPutterPos, TYPE_Int,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE("sts_left_back_pos",	        localModelSts->minitor.backLeftPutterPos,   TYPE_Int,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE("sts_right_back_pos",	        localModelSts->minitor.backRightPutterPos,  TYPE_Int,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_top_brush_current",	    localModelSts->minitor.topBrushCurrent,     TYPE_Int,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE("sts_Lfront_brush_current",	localModelSts->minitor.frontLeftBrushCurrent,   TYPE_Int,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE("sts_Rfront_brush_current",	localModelSts->minitor.frontRightBrushCurrent,  TYPE_Int,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE("sts_Lback_brush_current",	    localModelSts->minitor.backLeftBrushCurrent,    TYPE_Int,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE("sts_Rback_brush_current",	    localModelSts->minitor.backRightBrushCurrent,   TYPE_Int,	0,	0);
     //检测数据
     err &= IOT_ADD_PROPERTY_NODE_STR("sts_firmware_version",	localModelSts->minitor.version,         TYPE_String,0,	0);
     err &= IOT_ADD_PROPERTY_NODE_STR("sts_device_model",	    localModelSts->minitor.deviceModel,     TYPE_String,0,	0);
@@ -271,7 +280,7 @@ void xp_iot_data_register_thread(void *arg)
     err &= IOT_ADD_PROPERTY_NODE("sts_right_front_collision",	localModelSts->sensor.fRightCollision,  TYPE_Bool,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_left_back_collision",	    localModelSts->sensor.bLeftCollision,   TYPE_Bool,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_right_back_collision",	localModelSts->sensor.bRightCollision,  TYPE_Bool,	0,	0);
-    err &= IOT_ADD_PROPERTY_NODE("sts_signal_avoid_entry",	    localModelSts->sensor.avoidIntrude,       TYPE_Bool,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE("sts_signal_avoid_entry",	    localModelSts->sensor.avoidIntrude,     TYPE_Bool,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_signal_left_skew",	    localModelSts->sensor.leftSkew,         TYPE_Bool,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_signal_right_skew",	    localModelSts->sensor.rightSkew,        TYPE_Bool,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_signal_stop",	            localModelSts->sensor.stop,             TYPE_Bool,	0,	0);
@@ -388,16 +397,22 @@ void xp_iot_data_register_thread(void *arg)
     err &= IOT_ADD_PROPERTY_NODE("cmd_communication_test",		localModelCmd->communicateTest, TYPE_Bool,	-1,	CMD_COMMUNICATION_TEST);
     //远程控制
     err &= IOT_ADD_PROPERTY_NODE("cmd_home",	                localModelCmd->backHome,        TYPE_Bool,	-1,	CMD_HOME);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_safe_home",	            localModelCmd->safeBackHome,    TYPE_Bool,	-1,	CMD_SAFE_HOME);
     err &= IOT_ADD_PROPERTY_NODE("cmd_start_wash",	            localModelCmd->startWash,       TYPE_Bool,	-1,	CMD_START_WASH);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_wash_mode",				localModelCmd->washMode,		TYPE_Int,	-1,	CMD_WASH_MODE);
     err &= IOT_ADD_PROPERTY_NODE("cmd_stop",	                localModelCmd->stop,            TYPE_Bool,	-1,	CMD_STOP);
     err &= IOT_ADD_PROPERTY_NODE("cmd_custom_stop",	            localModelCmd->customStopWash,  TYPE_Bool,	-1,	CMD_CUSTOM_STOP_WASH);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_electrical_reset",	    localModelCmd->electricalReset, TYPE_Bool,	-1,	CMD_ELECTRICAL_RESET);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_cancel_order",	        localModelCmd->cancelOrder,     TYPE_Bool,	-1,	CMD_CANCEL_ORDER);
     err &= IOT_ADD_PROPERTY_NODE("cmd_dev_close",	            localModelCmd->devClose,        TYPE_Bool,	-1,	CMD_DEV_CLOSE);
     //手动控制
     err &= IOT_ADD_PROPERTY_NODE("cmd_sync",	                localModelCmd->sync,                TYPE_Bool,	-1,	SYNC);
     err &= IOT_ADD_PROPERTY_NODE("cmd_gate_1_open",	            localModelCmd->gate1Open,           TYPE_Bool,	-1,	CMD_GATE_1_OPEN);
-    err &= IOT_ADD_PROPERTY_NODE("cmd_gate_1_close",	        localModelCmd->gate1CLose,          TYPE_Bool,	-1,	CMD_GATE_1_CLOSE);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_gate_1_close",	        localModelCmd->gate1Close,          TYPE_Bool,	-1,	CMD_GATE_1_CLOSE);
     err &= IOT_ADD_PROPERTY_NODE("cmd_gate_2_open",	            localModelCmd->gate2Open,           TYPE_Bool,	-1,	CMD_GATE_2_OPEN);
     err &= IOT_ADD_PROPERTY_NODE("cmd_gate_2_close",	        localModelCmd->gate2Close,          TYPE_Bool,	-1,	CMD_GATE_2_CLOSE);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_gate_3_open",	            localModelCmd->gate3Open,           TYPE_Bool,	-1,	CMD_GATE_3_OPEN);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_gate_3_close",	        localModelCmd->gate3Close,          TYPE_Bool,	-1,	CMD_GATE_3_CLOSE);
     err &= IOT_ADD_PROPERTY_NODE("cmd_conveyor_work_1",	        localModelCmd->conveyorMove1,       TYPE_Bool,	-1,	CMD_CONVEYOR_1);
     err &= IOT_ADD_PROPERTY_NODE("cmd_conveyor_work_2",	        localModelCmd->conveyorMove2,       TYPE_Bool,	-1,	CMD_CONVEYOR_2);
     err &= IOT_ADD_PROPERTY_NODE("cmd_conveyor_work_3",	        localModelCmd->conveyorMove3,       TYPE_Bool,	-1,	CMD_CONVEYOR_3);
@@ -449,7 +464,7 @@ void xp_iot_data_register_thread(void *arg)
     err &= IOT_ADD_PROPERTY_NODE("cmd_func_dryer_25",	        localModelCmd->func.enableDryer25,      TYPE_Bool,	-1,	CMD_ENABLE_DRYER25);
     err &= IOT_ADD_PROPERTY_NODE("cmd_func_dryer_34",	        localModelCmd->func.enableDryer34,      TYPE_Bool,	-1,	CMD_ENABLE_DRYER34);
     err &= IOT_ADD_PROPERTY_NODE("cmd_func_gate_1",	            localModelCmd->func.enableGate1,        TYPE_Bool,	-1,	CMD_ENABLE_GATE1);
-    err &= IOT_ADD_PROPERTY_NODE("cmd_func_dryer_mode",	        localModelCmd->func.enableDryerDateMode,    TYPE_Bool,	-1,	CMD_ENABLE_DRYER_MODE);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_func_dryer_mode",	        localModelCmd->func.enableDryerDateMode,TYPE_Bool,	-1,	CMD_ENABLE_DRYER_MODE);
     err &= IOT_ADD_PROPERTY_NODE("cmd_func_auto_reset",	        localModelCmd->func.enableAutoReset,    TYPE_Bool,	-1,	CMD_ENABLE_AUTO_RESET);
     err &= IOT_ADD_PROPERTY_NODE("cmd_func_high_press_wash",	localModelCmd->func.enableHighPressWash,TYPE_Bool,	-1,	CMD_ENABLE_HIGH_PRESS_WASH);
     err &= IOT_ADD_PROPERTY_NODE("cmd_func_super_high",	        localModelCmd->func.detectSuperHigh,    TYPE_Bool,	-1,	CMD_DETECT_SUPER_HIGH);
@@ -466,22 +481,14 @@ void xp_iot_data_register_thread(void *arg)
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_shampoo_end",	    localModelCmd->adjust.shampooEndPos,            TYPE_Int,	-1,	CMD_SHAMPOO_END_POS);
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_top_start",	    localModelCmd->adjust.topBrushStartPos,         TYPE_Int,	-1,	CMD_TOP_BRUSH_START_POS);
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_top_end",	        localModelCmd->adjust.topBrushEndPos,           TYPE_Int,	-1,	CMD_TOP_BRUSH_END_POS);
-    err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_front_head",	    localModelCmd->adjust.frontBrushHeadPos,        TYPE_Int,	-1,	CMD_FRONT_BRUSH_HEAD_POS);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_front_tail",	    localModelCmd->adjust.frontBrushTailEndPos,     TYPE_Int,	-1,	CMD_FRONT_BRUSH_END_POS);
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_front_start",	    localModelCmd->adjust.frontBrushStartPos,       TYPE_Int,	-1,	CMD_FRONT_BRUSH_START_POS);
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_back_start",	    localModelCmd->adjust.backBrushStartPos,        TYPE_Int,	-1,	CMD_BACK_BRUSH_START_POS);
-    err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_front_stop_close", localModelCmd->adjust.frontBrushStopClosePos,   TYPE_Int,	-1,	CMD_FRONT_BRUSH_STOP_CLOSE_POS);
-    err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_back_stop_close",  localModelCmd->adjust.backBrushStopClosePos,    TYPE_Int,	-1,	CMD_BACK_BRUSH_STOP_CLOSE_POS);
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_back_end",	        localModelCmd->adjust.backBrushEndPos,          TYPE_Int,	-1,	CMD_BACK_BRUSH_END_POS);
-    err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_front_tail",	    localModelCmd->adjust.frontBrushTailEndPos,     TYPE_Int,	-1,	CMD_FRONT_BRUSH_TAIL_END_POS);
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_waxwater_start",	localModelCmd->adjust.waxwaterStartPos,         TYPE_Int,	-1,	CMD_WAXWATER_START_POS);
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_waxwater_end",	    localModelCmd->adjust.waxwaterEndPos,           TYPE_Int,	-1,	CMD_WAXWATER_END_POS);
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_dryer_start",	    localModelCmd->adjust.dryerStartPos,            TYPE_Int,	-1,	CMD_DRYER_START_POS);
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_dryer_end",	    localModelCmd->adjust.dryerEndPos,              TYPE_Int,	-1,	CMD_DRYER_END_POS);
-    err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_complete_head",	localModelCmd->adjust.completeAreaHeadStopPos,  TYPE_Int,	-1,	CMD_COMPLETE_AREA_HEAD_STOP_POS);
-    err &= IOT_ADD_PROPERTY_NODE("cmd_ready_area_move_min_pos",	    localModelCmd->adjust.readyAreaMoveMin,         TYPE_Int,	-1,	CMD_READY_AREA_MOVE_MIN);
-    err &= IOT_ADD_PROPERTY_NODE("cmd_dryer_day_frequency",	        localModelCmd->adjust.dryerDayFreq,             TYPE_Int,	-1,	CMD_DRYER_DAY_FREQ);
-    err &= IOT_ADD_PROPERTY_NODE("cmd_dryer_night_frequency",	    localModelCmd->adjust.dryerNightFreq,           TYPE_Int,	-1,	CMD_DRYER_NIGHT_FREQ);
-
     //其它
 	err &= IOT_ADD_PROPERTY_NODE("cmd_log",				            localModelCmd->log,			TYPE_Bool,	-1,	CMD_LOG);
     err &= IOT_ADD_PROPERTY_NODE_STR("cmd_debug",				    localModelCmd->debug,		TYPE_String,-1,	CMD_DEBUG);

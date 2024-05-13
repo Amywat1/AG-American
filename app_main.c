@@ -19,10 +19,10 @@
 #include "../../../1km/common/boardio.h"
 
 #define APP_name "AG"
-#define APP_version "AG-5.0.7"
+#define APP_version "AG_WAN-5.0.1"                     // 首位0~4开头为国内版本，5~8为海外版本（有线版本均带WAN，如：AG_WAN-5.0.1）
 
-static char product_key[]   ="k01omUSTr04";         // product_key 和 product_secret 匹配对应产品
-static char product_secret[]="dlStncmKY3ja7AXY";
+// static char product_key[]   ="g8wlob1ucMb";         // product_key 和 product_secret 匹配对应产品
+// static char product_secret[]="PuPs5ZNw3rTOrFtc";
 
 /**************************ota version*********************/
 const char *ota_hal_version(unsigned char dev_type, char* dn)
@@ -79,26 +79,36 @@ int application_start(int argc, char *argv[])
     xp_wellcome_worlds(APP_name, APP_version);
     xp_rtc_init();
     xp_boardIO_init(1);
+    //上电检测符合相关逻辑则进入检测程序，否则进入应用程序
+    //进入测试程序逻辑：初始DI01，DI02高电平、DI03，DI04输出都是低电平，播报语音后3S内DI01，DI02、DI03，DI04均为高电平
+    if(1 == xp_boardIO_get(1) && 1 == xp_boardIO_get(2) && 0 == xp_boardIO_get(3) && 0 == xp_boardIO_get(4)){
+        xp_voice_init();
+        aos_msleep(500);
+        char *file = aos_malloc(50);
+        sprintf(file,"fs:/sdcard/tips.mp3");
+        xp_voice_clr_source();
+        xp_voice_start(file,80);
+        aos_free(file);
+        uint8_t cnt = 0;
+        while (cnt++ < 10)
+        {
+            if(1 == xp_boardIO_get(1) && 1 == xp_boardIO_get(2) && 1 == xp_boardIO_get(3) && 1 == xp_boardIO_get(4)){
+                xp_board_check();
+                aos_reboot();
+            }
+            aos_msleep(300);
+        }
+    }
     extern void set_app_version(char *version);
     set_app_version(APP_version);
     extern int xp_osal_init(void);
     xp_osal_init();
     extern int xp_error_state_init(void);
-    // xp_error_state_init();
+    xp_error_state_init();
     extern int xp_service_init(void);
     xp_service_init();
-    char buf[100] = {0};
-    strcpy(buf, "AGT202402260002");
-    aos_kv_set("device_name", buf, strlen(buf), 1);
-    memset(buf, 0, sizeof(buf));
-    strcpy(buf, "8ec8fc610123260c0d203d7be229be87");
-    aos_kv_set("device_secret", buf, strlen(buf), 1);
-    memset(buf, 0, sizeof(buf));
-    strcpy(buf, "k0t3w4hquxK");
-    aos_kv_set("product_key", buf, strlen(buf), 1);
-    memset(buf, 0, sizeof(buf));
-    strcpy(buf, "5VNICtgacpzkL3VO");
-    aos_kv_set("product_secret", buf, strlen(buf), 1);
+    // aos_kv_set("product_key",    product_key,    strlen(product_key), 1);
+    // aos_kv_set("product_secret", product_secret, strlen(product_secret), 1);
     extern int xp_net_init(void);           //最后初始化net，回调函数赋值
     xp_net_init();
     while(1)

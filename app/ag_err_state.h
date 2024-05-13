@@ -25,7 +25,6 @@ typedef enum {
 
 //错误信息定义
 typedef struct {
-    uint8_t                 codeIndex;          //错误代码索引
     uint16_t                code;               //错误代码
     bool                    isErr;              //错误状态
     bool                    isTrigger;          //错误是否触发
@@ -53,7 +52,9 @@ typedef struct {
     bool isDetectCleanerLess;           //泥沙松动剂检测功能
     bool isDetectDyierLess;             //助干剂检测功能
     bool isDetectSewageEnable;          //污水液位检测功能
+    bool isDetectGate1Enable;           //道闸1检测功能
     bool isDetectBrushCroooked;         //侧刷前后歪检测功能
+    bool isSetElectricalReset;          //安全继电器是否复位
 } Type_ErrStateFlag_Def;
 
 /***********************************************************************************/

@@ -28,7 +28,7 @@
 #define TEST_FALG_2_ORDER_NUM   (222)
 #define TEST_LOCAL_ORDER_NUM    (888)
 
-#define MAX_QUEUE_ORDER_NUMBER  (5)             //支持的最大订单排队数量
+#define MAX_QUEUE_ORDER_NUMBER  (3)             //支持的最大订单排队数量
 
 
 bool recordIoInputSta[BOARD_NUMS][24];
@@ -48,7 +48,7 @@ typedef struct {
     bool                    isFirstPowerOn;
     Type_ServiceState_Enum 	state;			    //运行状态
     Type_ServiceState_Enum 	lastState;
-    // Type_WashMode_Enum      washMode;	        //洗车模式
+    Type_WashMode_Enum      washMode;	        //洗车模式
     // Type_WashProc_Enum      washExePorc;        //当前执行的洗车流程
     // Type_ProcStep_Enum      washExeStep;        //当前执行的洗车步骤
     bool                    isFirstSwitch;
@@ -76,7 +76,8 @@ static Type_CarMoveAreaSta_Def carInfo = {0};
 
 static bool isGetStartCmd = false;          //是否收到了洗车指令
 static bool isGetBackHomeCmd = false;       //是否收到归位指令
-static bool isNextCarWashWait = false;      //下一辆车启动是否需要等待
+static uint64_t customerOpenGate2TimeStamp = 0;     //顾客开2号道闸的时间戳
+static bool isCarWantForwardExit = false;
 
 //检测使能与否的KV记录（枚举赋值不允许改变！）
 typedef enum{
@@ -129,7 +130,11 @@ typedef struct {
 
 static Type_AppCmdMap_Def AppCmdMap_Table[] = {
    {CMD_GATE_1_OPEN,            APP_CRL_GATE_1_OPEN,            &appModule.localCmd.gate1Open,          "cmd_gate_1_open"},
-   {CMD_GATE_1_CLOSE,           APP_CRL_GATE_1_CLOSE,           &appModule.localCmd.gate1CLose,         "cmd_gate_1_close"},
+   {CMD_GATE_1_CLOSE,           APP_CRL_GATE_1_CLOSE,           &appModule.localCmd.gate1Close,         "cmd_gate_1_close"},
+   {CMD_GATE_2_OPEN,            APP_CRL_GATE_2_OPEN,            &appModule.localCmd.gate2Open,          "cmd_gate_2_open"},
+   {CMD_GATE_2_CLOSE,           APP_CRL_GATE_2_CLOSE,           &appModule.localCmd.gate2Close,         "cmd_gate_2_close"},
+   {CMD_GATE_3_OPEN,            APP_CRL_GATE_3_OPEN,            &appModule.localCmd.gate3Open,          "cmd_gate_3_open"},
+   {CMD_GATE_3_CLOSE,           APP_CRL_GATE_3_CLOSE,           &appModule.localCmd.gate3Close,         "cmd_gate_3_close"},
    {CMD_CONVEYOR_1,             APP_CRL_CONVEYOR_1,             &appModule.localCmd.conveyorMove1,      "cmd_conveyor_work_1"},
    {CMD_CONVEYOR_2,             APP_CRL_CONVEYOR_2,             &appModule.localCmd.conveyorMove2,      "cmd_conveyor_work_2"},
    {CMD_CONVEYOR_3,             APP_CRL_CONVEYOR_3,             &appModule.localCmd.conveyorMove3,      "cmd_conveyor_work_3"},
@@ -186,25 +191,27 @@ int xp_service_init(void)
         aos_msleep(500);
         LOG_INFO("Wait osal init...");
     };
-    // if(xp_io_manage_init(BOARD_NUMS - 1) != 0){
-    //     LOG_WARN("IO board init failed !");
-    // }
+    if(xp_io_manage_init(BOARD_NUMS - 1) != 0){
+        LOG_WARN("IO board init failed !");
+    }
     xp_wdg_init(20, 2);
     xp_remoteCmd_init(DEVICE_AG);
     xp_service_module_init();
     xp_read_kv_value();
     xp_cmd_excuted_complete = NULL;
 
-    aos_task_new("service", xp_service_thread, NULL, 8192);
+    aos_task_new("service",                 xp_service_thread, NULL, 8192);
     aos_task_new("model_status_update",     model_status_update_thread, NULL, 4096);
     aos_task_new("model_cmd_executed",      model_cmd_executed_thread, NULL, 4096);
     aos_task_new("parking_sta_detection",   ready_area_detection_thread, NULL, 2048);
-    aos_task_new("order_counter",  order_counter_thread, NULL, 1024);
+    aos_task_new("order_counter",           order_counter_thread, NULL, 1024);
 
     xp_error_deal_callback_regist(xp_err_deal_callback);
 
     wash.isFirstPowerOn = true;
     wash.state = STA_INIT;
+    wash.washMode = NORMAL_WASH;
+    appModule.localCmd.washMode = wash.washMode;
 
     return 0;
 }
@@ -217,20 +224,21 @@ int xp_service_init(void)
 typedef struct{
     int                     detectData;
     int                     enableData;
-    int                     startSkirtBrushOut;
+    int                     startSkirtBrush;
     int                     startShampoo;
     int                     startTopBrush;
     int                     startFrontBrush;
     int                     startBackBrush;
     int                     startWaxwater;
     int                     startDrying;
-    int                     finishHighPump;
-    int                     finishSkirtBrush;
-    int                     finishTopBrush;
-    int                     finishFrontBrush;
-    int                     finishBackBrush;
-    int                     finishWaxwater;
-    int                     finishDrying;
+    int                     endHighPump;
+    int                     endSkirtBrush;
+    int                     endShampoo;
+    int                     endTopBrush;
+    int                     endFrontBrush;
+    int                     endBackBrush;
+    int                     endWaxwater;
+    int                     endDrying;
     RTC_time                time;
     Type_OrdersInfo_Def     order;
 } Type_KV_Service_Def;
@@ -247,72 +255,81 @@ typedef struct {
 } Type_KvDataMap_Def;
 
 static Type_KvDataMap_Def KvDataMap_Table[] = {
-    {CMD_DETECT_LIFTER_LOOSE,       "detect",   &kvService.detectData,  &appModule.localCmd.func.detectLifterLoose,     sizeof(kvService.detectData),   KV_DETECT_LIFTER_LOOSE},
-    {CMD_DETECT_WATER_PRESS,        "detect",   &kvService.detectData,  &appModule.localCmd.func.detectWaterPress,      1,                              KV_DETECT_WATER_PRESS},
-    {CMD_DETECT_SHAMPOO,            "detect",   &kvService.detectData,  &appModule.localCmd.func.detectShampoo,         1,                              KV_DETECT_SHAMPOO},
-    {CMD_DETECT_WAXWATER,           "detect",   &kvService.detectData,  &appModule.localCmd.func.detectWaxwater,        1,                              KV_DETECT_WAXWATER},
-    {CMD_DETECT_SEWAGE,             "detect",   &kvService.detectData,  &appModule.localCmd.func.detectSewage,          1,                              KV_DETECT_SEWAGE},
-    {CMD_DETECT_ALLIN_SIGNAL,       "detect",   &kvService.detectData,  &appModule.localCmd.func.detectAllinSignal,     1,                              KV_DETECT_ALL_IN_SIGNAL},
-    {CMD_DETECT_SKIRT_SIGNAL,       "detect",   &kvService.detectData,  &appModule.localCmd.func.detectSkirtSignal,     1,                              KV_DETECT_SKIRT_SIGNAL},
-    {CMD_DETECT_SUPER_HIGH,         "detect",   &kvService.detectData,  &appModule.localCmd.func.detectSuperHigh,       1,                              KV_DETECT_SUPER_HIGH},
-    {CMD_DETECT_ALL_COLLISION,      "detect",   &kvService.detectData,  &appModule.localCmd.func.detectAllCollision,    1,                              KV_DETECT_ALL_COLLISION},
-    {CMD_DETECT_FLEFT_COLLISION,    "detect",   &kvService.detectData,  &appModule.localCmd.func.detectFLeftCollision,  1,                              KV_DETECT_FL_COLLISION},
-    {CMD_DETECT_FRIGHT_COLLISION,   "detect",   &kvService.detectData,  &appModule.localCmd.func.detectFRightCollision, 1,                              KV_DETECT_FR_COLLISION},
-    {CMD_DETECT_BLEFT_COLLISION,    "detect",   &kvService.detectData,  &appModule.localCmd.func.detectBLeftCollision,  1,                              KV_DETECT_BL_COLLISION},
-    {CMD_DETECT_BRIGHT_COLLISION,   "detect",   &kvService.detectData,  &appModule.localCmd.func.detectBRightCollision, 1,                              KV_DETECT_BR_COLLISION},
-    {CMD_DETECT_CLEANER,            "detect",   &kvService.detectData,  &appModule.localCmd.func.detectCleaner,         1,                              KV_DETECT_CLEANER},
-    {CMD_DETECT_DRIER,              "detect",   &kvService.detectData,  &appModule.localCmd.func.detectDrier,           1,                              KV_DETECT_DRIER},
-    {CMD_DEV_CLOSE,                 "enable",   &kvService.enableData,  &appModule.localCmd.devClose,                   sizeof(kvService.enableData),   KV_ENABLE_DEV_CLOSE},
-    {CMD_LOG,                       "enable",   &kvService.enableData,  &appModule.localCmd.log,                        1,                              KV_ENABLE_LOG_UPLOAD},
-    {CMD_ENABLE_SEWAGE_PUMP,        "enable",   &kvService.enableData,  &appModule.localCmd.func.enableSewagePump,      1,                              KV_ENABLE_SEWAGE_PUMP},
-    {CMD_ENABLE_TOP_SWING,          "enable",   &kvService.enableData,  &appModule.localCmd.func.enableTopSwing,        1,                              KV_ENABLE_TOP_SWING},
-    {CMD_ENABLE_LEFT_SWING,         "enable",   &kvService.enableData,  &appModule.localCmd.func.enableLeftSwing,       1,                              KV_ENABLE_LEFT_SWING},
-    {CMD_ENABLE_RIGHT_SWING,        "enable",   &kvService.enableData,  &appModule.localCmd.func.enableRightSwing,      1,                              KV_ENABLE_RIGHT_SWING},
-    {CMD_ENABLE_SKIRT_BRUSH,        "enable",   &kvService.enableData,  &appModule.localCmd.func.enableSkirtBrush,      1,                              KV_ENABLE_SKIRT_WASH},
-    {CMD_ENABLE_DRYER16,            "enable",   &kvService.enableData,  &appModule.localCmd.func.enableDryer16,         1,                              KV_ENABLE_DRYER_16},
-    {CMD_ENABLE_DRYER25,            "enable",   &kvService.enableData,  &appModule.localCmd.func.enableDryer25,         1,                              KV_ENABLE_DRYER_25},
-    {CMD_ENABLE_DRYER34,            "enable",   &kvService.enableData,  &appModule.localCmd.func.enableDryer34,         1,                              KV_ENABLE_DRYER_34},
-    {CMD_ENABLE_GATE1,              "enable",   &kvService.enableData,  &appModule.localCmd.func.enableGate1,           1,                              KV_ENABLE_GATE_1},
-    {CMD_ENABLE_DRYER_MODE,         "enable",   &kvService.enableData,  &appModule.localCmd.func.enableAutoReset,       1,                              KV_ENABLE_AUTO_RESET},
-    {CMD_ENABLE_AUTO_RESET,         "enable",   &kvService.enableData,  &appModule.localCmd.func.enableDryerDateMode,   1,                              KV_ENABLE_DRYER_DATE_MODE},
-    {CMD_ENABLE_HIGH_PRESS_WASH,    "enable",   &kvService.enableData,  &appModule.localCmd.func.enableHighPressWash,   1,                              KV_ENABLE_HIGH_PRESS_WASH},
-    // {CMD_HIGH_PRESS_END_POS,        "",             &kvService.,                        &appModule.localCmd.adjust.highPressEndPos,     sizeof()},
-    // {CMD_SKIRT_BRUSH_START_POS,     "",             &kvService.,                        &appModule.localCmd.adjust.skirtBrushStartPos,  sizeof()},
-    // {CMD_SKIRT_BRUSH_END_POS,       "",             &kvService.,                        &appModule.localCmd.adjust.skirtBrushEndPos,    sizeof()},
-    // {CMD_SHAMPOO_START_POS,         "",             &kvService.,                        &appModule.localCmd.adjust.shampooStartPos,     sizeof()},
-    // {CMD_SHAMPOO_END_POS,           "",             &kvService.,                        &appModule.localCmd.adjust.shampooEndPos,       sizeof()},
-    // {CMD_TOP_BRUSH_START_POS,       "",             &kvService.,                        &appModule.localCmd.adjust.topBrushStartPos,    sizeof()},
-    // {CMD_TOP_BRUSH_END_POS,         "",             &kvService.,                        &appModule.localCmd.adjust.topBrushEndPos,      sizeof()},
-    // {CMD_FRONT_BRUSH_HEAD_POS,      "",             &kvService.,                        &appModule.localCmd.adjust.frontBrushHeadPos,   sizeof()},
-    // {CMD_FRONT_BRUSH_START_POS,     "",             &kvService.,                        &appModule.localCmd.adjust.frontBrushStartPos,  sizeof()},
-    // {CMD_BACK_BRUSH_START_POS,      "",             &kvService.,                        &appModule.localCmd.adjust.backBrushStartPos,   sizeof()},
-    // {CMD_FRONT_BRUSH_STOP_CLOSE_POS,"",             &kvService.,                        &appModule.localCmd.adjust.frontBrushStopClosePos,  sizeof()},
-    // {CMD_BACK_BRUSH_STOP_CLOSE_POS, "",             &kvService.,                        &appModule.localCmd.adjust.backBrushStopClosePos,   sizeof()},
-    // {CMD_BACK_BRUSH_END_POS,        "",             &kvService.,                        &appModule.localCmd.adjust.backBrushEndPos,     sizeof()},
-    // {CMD_FRONT_BRUSH_TAIL_END_POS,  "",             &kvService.,                        &appModule.localCmd.adjust.frontBrushTailEndPos,sizeof()},
-    // {CMD_WAXWATER_START_POS,        "",             &kvService.,                        &appModule.localCmd.adjust.waxwaterStartPos,    sizeof()},
-    // {CMD_WAXWATER_END_POS,          "",             &kvService.,                        &appModule.localCmd.adjust.waxwaterEndPos,      sizeof()},
-    // {CMD_DRYER_START_POS,           "",             &kvService.,                        &appModule.localCmd.adjust.dryerStartPos,       sizeof()},
-    // {CMD_DRYER_END_POS,             "",             &kvService.,                        &appModule.localCmd.adjust.dryerEndPos,         sizeof()},
-    // {CMD_COMPLETE_AREA_HEAD_STOP_POS,   "",         &kvService.,                        &appModule.localCmd.adjust.completeAreaHeadStopPos, sizeof()},
-    // {CMD_READY_AREA_MOVE_MIN,       "",             &kvService.,                        &appModule.localCmd.adjust.readyAreaMoveMin,    sizeof()},
-    // {CMD_DRYER_DAY_FREQ,            "",             &kvService.,                        &appModule.localCmd.adjust.dryerDayFreq,        sizeof()},
-    // {CMD_DRYER_NIGHT_FREQ,          "",             &kvService.,                        &appModule.localCmd.adjust.dryerNightFreq,      sizeof()},
-    {CMD_NULL,                      "time",         &kvService.time,                    NULL,   sizeof(kvService.time),                 0xFF},
-    {CMD_NULL,                      "completeCnt",  &kvService.order.completeCnt,       NULL,   sizeof(kvService.order.completeCnt),    0xFF},
-    {CMD_NULL,                      "failCnt",      &kvService.order.failCnt,           NULL,   sizeof(kvService.order.failCnt),        0xFF},
-    {CMD_NULL,                      "todayCnt",     &kvService.order.today,             NULL,   sizeof(kvService.order.today),          0xFF},
-    {CMD_NULL,                      "totalCnt",     &kvService.order.total,             NULL,   sizeof(kvService.order.total),          0xFF},
-
+    {CMD_DETECT_LIFTER_LOOSE,       "detect",       &kvService.detectData,          &appModule.localCmd.func.detectLifterLoose,     sizeof(kvService.detectData),       KV_DETECT_LIFTER_LOOSE},
+    {CMD_DETECT_WATER_PRESS,        "detect",       &kvService.detectData,          &appModule.localCmd.func.detectWaterPress,      sizeof(kvService.detectData),       KV_DETECT_WATER_PRESS},
+    {CMD_DETECT_SHAMPOO,            "detect",       &kvService.detectData,          &appModule.localCmd.func.detectShampoo,         sizeof(kvService.detectData),       KV_DETECT_SHAMPOO},
+    {CMD_DETECT_WAXWATER,           "detect",       &kvService.detectData,          &appModule.localCmd.func.detectWaxwater,        sizeof(kvService.detectData),       KV_DETECT_WAXWATER},
+    {CMD_DETECT_SEWAGE,             "detect",       &kvService.detectData,          &appModule.localCmd.func.detectSewage,          sizeof(kvService.detectData),       KV_DETECT_SEWAGE},
+    {CMD_DETECT_ALLIN_SIGNAL,       "detect",       &kvService.detectData,          &appModule.localCmd.func.detectAllinSignal,     sizeof(kvService.detectData),       KV_DETECT_ALL_IN_SIGNAL},
+    {CMD_DETECT_SKIRT_SIGNAL,       "detect",       &kvService.detectData,          &appModule.localCmd.func.detectSkirtSignal,     sizeof(kvService.detectData),       KV_DETECT_SKIRT_SIGNAL},
+    {CMD_DETECT_SUPER_HIGH,         "detect",       &kvService.detectData,          &appModule.localCmd.func.detectSuperHigh,       sizeof(kvService.detectData),       KV_DETECT_SUPER_HIGH},
+    {CMD_DETECT_ALL_COLLISION,      "detect",       &kvService.detectData,          &appModule.localCmd.func.detectAllCollision,    sizeof(kvService.detectData),       KV_DETECT_ALL_COLLISION},
+    {CMD_DETECT_FLEFT_COLLISION,    "detect",       &kvService.detectData,          &appModule.localCmd.func.detectFLeftCollision,  sizeof(kvService.detectData),       KV_DETECT_FL_COLLISION},
+    {CMD_DETECT_FRIGHT_COLLISION,   "detect",       &kvService.detectData,          &appModule.localCmd.func.detectFRightCollision, sizeof(kvService.detectData),       KV_DETECT_FR_COLLISION},
+    {CMD_DETECT_BLEFT_COLLISION,    "detect",       &kvService.detectData,          &appModule.localCmd.func.detectBLeftCollision,  sizeof(kvService.detectData),       KV_DETECT_BL_COLLISION},
+    {CMD_DETECT_BRIGHT_COLLISION,   "detect",       &kvService.detectData,          &appModule.localCmd.func.detectBRightCollision, sizeof(kvService.detectData),       KV_DETECT_BR_COLLISION},
+    {CMD_DETECT_CLEANER,            "detect",       &kvService.detectData,          &appModule.localCmd.func.detectCleaner,         sizeof(kvService.detectData),       KV_DETECT_CLEANER},
+    {CMD_DETECT_DRIER,              "detect",       &kvService.detectData,          &appModule.localCmd.func.detectDrier,           sizeof(kvService.detectData),       KV_DETECT_DRIER},
+    {CMD_DEV_CLOSE,                 "enable",       &kvService.enableData,          &appModule.localCmd.devClose,                   sizeof(kvService.enableData),       KV_ENABLE_DEV_CLOSE},
+    {CMD_LOG,                       "enable",       &kvService.enableData,          &appModule.localCmd.log,                        sizeof(kvService.enableData),       KV_ENABLE_LOG_UPLOAD},
+    {CMD_ENABLE_SEWAGE_PUMP,        "enable",       &kvService.enableData,          &appModule.localCmd.func.enableSewagePump,      sizeof(kvService.enableData),       KV_ENABLE_SEWAGE_PUMP},
+    {CMD_ENABLE_TOP_SWING,          "enable",       &kvService.enableData,          &appModule.localCmd.func.enableTopSwing,        sizeof(kvService.enableData),       KV_ENABLE_TOP_SWING},
+    {CMD_ENABLE_LEFT_SWING,         "enable",       &kvService.enableData,          &appModule.localCmd.func.enableLeftSwing,       sizeof(kvService.enableData),       KV_ENABLE_LEFT_SWING},
+    {CMD_ENABLE_RIGHT_SWING,        "enable",       &kvService.enableData,          &appModule.localCmd.func.enableRightSwing,      sizeof(kvService.enableData),       KV_ENABLE_RIGHT_SWING},
+    {CMD_ENABLE_SKIRT_BRUSH,        "enable",       &kvService.enableData,          &appModule.localCmd.func.enableSkirtBrush,      sizeof(kvService.enableData),       KV_ENABLE_SKIRT_WASH},
+    {CMD_ENABLE_DRYER16,            "enable",       &kvService.enableData,          &appModule.localCmd.func.enableDryer16,         sizeof(kvService.enableData),       KV_ENABLE_DRYER_16},
+    {CMD_ENABLE_DRYER25,            "enable",       &kvService.enableData,          &appModule.localCmd.func.enableDryer25,         sizeof(kvService.enableData),       KV_ENABLE_DRYER_25},
+    {CMD_ENABLE_DRYER34,            "enable",       &kvService.enableData,          &appModule.localCmd.func.enableDryer34,         sizeof(kvService.enableData),       KV_ENABLE_DRYER_34},
+    {CMD_ENABLE_GATE1,              "enable",       &kvService.enableData,          &appModule.localCmd.func.enableGate1,           sizeof(kvService.enableData),       KV_ENABLE_GATE_1},
+    {CMD_ENABLE_DRYER_MODE,         "enable",       &kvService.enableData,          &appModule.localCmd.func.enableDryerDateMode,   sizeof(kvService.enableData),       KV_ENABLE_DRYER_DATE_MODE},
+    {CMD_ENABLE_AUTO_RESET,         "enable",       &kvService.enableData,          &appModule.localCmd.func.enableAutoReset,       sizeof(kvService.enableData),       KV_ENABLE_AUTO_RESET},
+    {CMD_ENABLE_HIGH_PRESS_WASH,    "enable",       &kvService.enableData,          &appModule.localCmd.func.enableHighPressWash,   sizeof(kvService.enableData),       KV_ENABLE_HIGH_PRESS_WASH},
+    {CMD_HIGH_PRESS_END_POS,        "epHighPump",   &kvService.endHighPump,         &appModule.localCmd.adjust.highPressEndPos,     sizeof(kvService.endHighPump),      0xFF},
+    {CMD_SKIRT_BRUSH_START_POS,     "spSkirtBrush", &kvService.startSkirtBrush,     &appModule.localCmd.adjust.skirtBrushStartPos,  sizeof(kvService.startSkirtBrush),  0xFF},
+    {CMD_SKIRT_BRUSH_END_POS,       "epSkirtBrush", &kvService.endSkirtBrush,       &appModule.localCmd.adjust.skirtBrushEndPos,    sizeof(kvService.endSkirtBrush),    0xFF},
+    {CMD_SHAMPOO_START_POS,         "spShampoo",    &kvService.startShampoo,        &appModule.localCmd.adjust.shampooStartPos,     sizeof(kvService.startShampoo),     0xFF},
+    {CMD_SHAMPOO_END_POS,           "epShampoo",    &kvService.endShampoo,          &appModule.localCmd.adjust.shampooEndPos,       sizeof(kvService.endShampoo),       0xFF},
+    {CMD_TOP_BRUSH_START_POS,       "spTopBrush",   &kvService.startTopBrush,       &appModule.localCmd.adjust.topBrushStartPos,    sizeof(kvService.startTopBrush),    0xFF},
+    {CMD_TOP_BRUSH_END_POS,         "epTopBrush",   &kvService.endTopBrush,         &appModule.localCmd.adjust.topBrushEndPos,      sizeof(kvService.endTopBrush),      0xFF},
+    {CMD_FRONT_BRUSH_START_POS,     "spFBrush",     &kvService.startFrontBrush,     &appModule.localCmd.adjust.frontBrushStartPos,  sizeof(kvService.startFrontBrush),  0xFF},
+    {CMD_FRONT_BRUSH_END_POS,       "epFBrush",     &kvService.endFrontBrush,       &appModule.localCmd.adjust.frontBrushTailEndPos,sizeof(kvService.endFrontBrush),    0xFF},
+    {CMD_BACK_BRUSH_START_POS,      "spBBrush",     &kvService.startBackBrush,      &appModule.localCmd.adjust.backBrushStartPos,   sizeof(kvService.startBackBrush),   0xFF},
+    {CMD_BACK_BRUSH_END_POS,        "epBBrush",     &kvService.endBackBrush,        &appModule.localCmd.adjust.backBrushEndPos,     sizeof(kvService.endBackBrush),     0xFF},
+    {CMD_WAXWATER_START_POS,        "spWaxwater",   &kvService.startWaxwater,       &appModule.localCmd.adjust.waxwaterStartPos,    sizeof(kvService.startWaxwater),    0xFF},
+    {CMD_WAXWATER_END_POS,          "epWaxwater",   &kvService.endWaxwater,         &appModule.localCmd.adjust.waxwaterEndPos,      sizeof(kvService.endWaxwater),      0xFF},
+    {CMD_DRYER_START_POS,           "spDryer",      &kvService.startDrying,         &appModule.localCmd.adjust.dryerStartPos,       sizeof(kvService.startDrying),      0xFF},
+    {CMD_DRYER_END_POS,             "epDryer",      &kvService.endDrying,           &appModule.localCmd.adjust.dryerEndPos,         sizeof(kvService.endDrying),        0xFF},
+    {CMD_NULL,                      "time",         &kvService.time,                NULL,   sizeof(kvService.time),                 0xFF},
+    {CMD_NULL,                      "completeCnt",  &kvService.order.completeCnt,   NULL,   sizeof(kvService.order.completeCnt),    0xFF},
+    {CMD_NULL,                      "failCnt",      &kvService.order.failCnt,       NULL,   sizeof(kvService.order.failCnt),        0xFF},
+    {CMD_NULL,                      "offlineCnt",   &kvService.order.offlineStartNum,NULL,  sizeof(kvService.order.offlineStartNum),0xFF},
+    {CMD_NULL,                      "todayCnt",     &kvService.order.today,         NULL,   sizeof(kvService.order.today),          0xFF},
+    {CMD_NULL,                      "totalCnt",     &kvService.order.total,         NULL,   sizeof(kvService.order.total),          0xFF},
 };
 
 static int set_kv_default_value(void)
 {
     kvService.detectData            = 0x7FFFFFFF;
     kvService.enableData            = 0x7FFFFFFE;
+    kvService.startSkirtBrush       = 50;
+    kvService.startShampoo          = 90;
+    kvService.startTopBrush         = 150;
+    kvService.startFrontBrush       = 360;
+    kvService.startBackBrush        = 550;
+    kvService.startWaxwater         = 650;
+    kvService.startDrying           = 900;
+    kvService.endHighPump           = 30;
+    kvService.endSkirtBrush         = 110;
+    kvService.endShampoo            = 140;
+    kvService.endTopBrush           = 330;
+    kvService.endFrontBrush         = 460;
+    kvService.endBackBrush          = 700;
+    kvService.endWaxwater           = 720;
+    kvService.endDrying             = 1180;
     //日期不用恢复默认值，线程里获取时间更新
     kvService.order.completeCnt     = 0;
     kvService.order.failCnt         = 0;
+    kvService.order.offlineStartNum = 0;
     memset(&kvService.order.today,  0, sizeof(kvService.order.today));
     memset(kvService.order.month,   0, sizeof(kvService.order.month));
     memset(kvService.order.daily,   0, sizeof(kvService.order.daily));
@@ -328,19 +345,19 @@ static int xp_read_kv_value(void)
         //整形数据存储多个含义数据的只读取一次
         if(0 == KvDataMap_Table[i].matchKvBit || 0xFF == KvDataMap_Table[i].matchKvBit){
             xp_read_creat_kv_params(KvDataMap_Table[i].key, KvDataMap_Table[i].pData, &KvDataMap_Table[i].len);
+            LOG_DEBUG("Read key %s, data 0x%X, len %d", KvDataMap_Table[i].key, *(int*)KvDataMap_Table[i].pData, KvDataMap_Table[i].len);
         }
 
         //命令点位不会随状态改变自动更新，在这赋值，等待联网后同步所有点位时会上报
         if(KvDataMap_Table[i].matchAppModule){
             if(KvDataMap_Table[i].matchKvBit != 0xFF){
-                int value = 1 & (*(int*)KvDataMap_Table[i].pData >> KvDataMap_Table[i].matchKvBit);
-                memcpy(KvDataMap_Table[i].matchAppModule, &value, KvDataMap_Table[i].len);
+                bool value = 1 & (*(int*)KvDataMap_Table[i].pData >> KvDataMap_Table[i].matchKvBit);
+                memcpy(KvDataMap_Table[i].matchAppModule, &value, 1);
             }
             else
             {
                 memcpy(KvDataMap_Table[i].matchAppModule, KvDataMap_Table[i].pData, KvDataMap_Table[i].len);
             }
-            
         }
         aos_msleep(1);
     }
@@ -377,6 +394,22 @@ static int xp_read_kv_value(void)
     err_need_flag_handle()->isDetectWaxwaterEnable      = appModule.localCmd.func.detectWaxwater;
     err_need_flag_handle()->isDetectSewageEnable        = appModule.localCmd.func.detectSewage;
     set_log_upload_flag(appModule.localCmd.log);
+
+    get_washProcPos_Obj()->startSkirtBrush  = appModule.localCmd.adjust.skirtBrushStartPos;
+    get_washProcPos_Obj()->startShampoo     = appModule.localCmd.adjust.shampooStartPos;
+    get_washProcPos_Obj()->startTopBrush    = appModule.localCmd.adjust.topBrushStartPos;
+    get_washProcPos_Obj()->startFrontBrush  = appModule.localCmd.adjust.frontBrushStartPos;
+    get_washProcPos_Obj()->startBackBrush   = appModule.localCmd.adjust.backBrushStartPos;
+    get_washProcPos_Obj()->startWaxwater    = appModule.localCmd.adjust.waxwaterStartPos;
+    get_washProcPos_Obj()->startDrying      = appModule.localCmd.adjust.dryerStartPos;
+    get_washProcPos_Obj()->endHighPump      = appModule.localCmd.adjust.highPressEndPos;
+    get_washProcPos_Obj()->endSkirtBrush    = appModule.localCmd.adjust.skirtBrushEndPos;
+    get_washProcPos_Obj()->endShampoo       = appModule.localCmd.adjust.shampooEndPos;
+    get_washProcPos_Obj()->endTopBrush      = appModule.localCmd.adjust.topBrushEndPos;
+    get_washProcPos_Obj()->endFrontBrush    = appModule.localCmd.adjust.frontBrushTailEndPos;
+    get_washProcPos_Obj()->endBackBrush     = appModule.localCmd.adjust.backBrushEndPos;
+    get_washProcPos_Obj()->endWaxwater      = appModule.localCmd.adjust.waxwaterEndPos;
+    get_washProcPos_Obj()->endDrying        = appModule.localCmd.adjust.dryerEndPos;
 }
 
 /*                                                         =======================                                                         */
@@ -422,29 +455,29 @@ void order_counter_thread(void *arg)
                 kvService.order.month[time->month - 1].totals++;
                 kvService.order.daily[time->month - 1][time->date - 1].totals++;
                 kvService.order.total.totals++;
-                // switch (wash.washMode)
-                // {
-                // case QUICK_WASH:
-                //     kvService.order.today.washQuick++;
-                //     kvService.order.month[time->month - 1].washQuick++;
-                //     kvService.order.daily[time->month - 1][time->date - 1].washQuick++;
-                //     kvService.order.total.washQuick++;
-                //     break;
-                // case NORMAL_WASH:
-                //     kvService.order.today.washNormal++;
-                //     kvService.order.month[time->month - 1].washNormal++;
-                //     kvService.order.daily[time->month - 1][time->date - 1].washNormal++;
-                //     kvService.order.total.washNormal++;
-                //     break;
-                // case FINE_WASH:
-                //     kvService.order.today.washFine++;
-                //     kvService.order.month[time->month - 1].washFine++;
-                //     kvService.order.daily[time->month - 1][time->date - 1].washFine++;
-                //     kvService.order.total.washFine++;
-                //     break;
-                // default:
-                //     break;
-                // }
+                switch (wash.washMode)
+                {
+                case QUICK_WASH:
+                    kvService.order.today.washQuick++;
+                    kvService.order.month[time->month - 1].washQuick++;
+                    kvService.order.daily[time->month - 1][time->date - 1].washQuick++;
+                    kvService.order.total.washQuick++;
+                    break;
+                case NORMAL_WASH:
+                    kvService.order.today.washNormal++;
+                    kvService.order.month[time->month - 1].washNormal++;
+                    kvService.order.daily[time->month - 1][time->date - 1].washNormal++;
+                    kvService.order.total.washNormal++;
+                    break;
+                case FINE_WASH:
+                    kvService.order.today.washFine++;
+                    kvService.order.month[time->month - 1].washFine++;
+                    kvService.order.daily[time->month - 1][time->date - 1].washFine++;
+                    kvService.order.total.washFine++;
+                    break;
+                default:
+                    break;
+                }
             }
         }
         else{
@@ -452,44 +485,52 @@ void order_counter_thread(void *arg)
         }
 
         //KV值存储避开音频播放（两个一起运行偶尔会触发hardFault，原因未知，可能跟中断有关）
-        if((kvService.order.isNewOrderSave || kvService.order.isNewFailedOrderSave || kvService.order.isNewCompleteOrderSave || kvService.order.isNewDateSave)
-        && get_diff_ms(get_voice_start_time_stamp()) > 15000){
-            module_lock_voice_mutex(500);
-            if(kvService.order.isNewOrderSave){
-                kvService.order.isNewOrderSave = false;
-                xp_save_kv_params("todayCnt", &kvService.order.today, sizeof(kvService.order.today));
-                aos_msleep(10);                          //测试不加延时连续存储kv时程序运行会崩溃，原因未知
-                
-                //单个KV尽量不要太大，不然会频繁触发gc（kv的垃圾回收机制），达不到减少擦除次数的效果
-                char *buf = aos_malloc(20);
-                sprintf(buf, "monthCnt_%d", time->month - 1);
-                xp_save_kv_params(buf, &kvService.order.month[time->month - 1], sizeof(Type_OrdersNum_Def));
-                aos_msleep(10);
-                sprintf(buf, "dailyCnt_%d_%d", time->month - 1, time->date - 1);
-                xp_save_kv_params(buf, &kvService.order.daily[time->month - 1][time->date - 1], sizeof(Type_OrdersNum_Def));
-                aos_msleep(10);
-                aos_free(buf);
-                
-                xp_save_kv_params("totalCnt", &kvService.order.total, sizeof(kvService.order.total));
-                aos_msleep(10);
+        if((kvService.order.isNewOrderSave || kvService.order.isNewFailedOrderSave 
+        || kvService.order.isNewCompleteOrderSave || kvService.order.isNewDateSave
+        || kvService.order.isNewOfflineOrderSave)
+        && get_diff_ms(get_voice_start_time_stamp()) > 25000 && STA_IDLE == wash.state){
+            if(0 == module_lock_voice_mutex(500)){
+                if(kvService.order.isNewOrderSave){
+                    kvService.order.isNewOrderSave = false;
+                    xp_save_kv_params("todayCnt", &kvService.order.today, sizeof(kvService.order.today));
+                    aos_msleep(10);                          //测试不加延时连续存储kv时程序运行会崩溃，原因未知
+                    
+                    //单个KV尽量不要太大，不然会频繁触发gc（kv的垃圾回收机制），达不到减少擦除次数的效果
+                    char *buf = aos_malloc(20);
+                    sprintf(buf, "monthCnt_%d", time->month - 1);
+                    xp_save_kv_params(buf, &kvService.order.month[time->month - 1], sizeof(Type_OrdersNum_Def));
+                    aos_msleep(10);
+                    sprintf(buf, "dailyCnt_%d_%d", time->month - 1, time->date - 1);
+                    xp_save_kv_params(buf, &kvService.order.daily[time->month - 1][time->date - 1], sizeof(Type_OrdersNum_Def));
+                    aos_msleep(10);
+                    aos_free(buf);
+                    
+                    xp_save_kv_params("totalCnt", &kvService.order.total, sizeof(kvService.order.total));
+                    aos_msleep(10);
+                }
+                if(kvService.order.isNewCompleteOrderSave){
+                    kvService.order.isNewCompleteOrderSave = false;
+                    xp_save_kv_params("completeCnt", &kvService.order.completeCnt, sizeof(kvService.order.completeCnt));
+                    aos_msleep(10);
+                }
+                if(kvService.order.isNewFailedOrderSave){
+                    kvService.order.isNewFailedOrderSave = false;
+                    xp_save_kv_params("failCnt", &kvService.order.failCnt, sizeof(kvService.order.failCnt));
+                    aos_msleep(10);
+                }
+                if(kvService.order.isNewDateSave){
+                    kvService.order.isNewDateSave = false;
+                    xp_save_kv_params("time", &kvService.time, sizeof(kvService.time));
+                    aos_msleep(10);
+                }
+                if(kvService.order.isNewOfflineOrderSave){
+                    kvService.order.isNewOfflineOrderSave = false;
+                    xp_save_kv_params("offlineCnt", &kvService.order.offlineStartNum, sizeof(kvService.order.offlineStartNum));
+                    aos_msleep(10);
+                }
+                aos_msleep(500);                        //存储完延时一段时间再解锁音频播放（可能会触发kv里的gc线程，等待gc线程执行结束）
+                module_unlock_voice_mutex();
             }
-            if(kvService.order.isNewCompleteOrderSave){
-                kvService.order.isNewCompleteOrderSave = false;
-                xp_save_kv_params("completeCnt", &kvService.order.completeCnt, sizeof(kvService.order.completeCnt));
-                aos_msleep(10);
-            }
-            if(kvService.order.isNewFailedOrderSave){
-                kvService.order.isNewFailedOrderSave = false;
-                xp_save_kv_params("failCnt", &kvService.order.failCnt, sizeof(kvService.order.failCnt));
-                aos_msleep(10);
-            }
-            if(kvService.order.isNewDateSave){
-                kvService.order.isNewDateSave = false;
-                xp_save_kv_params("time", &kvService.time, sizeof(kvService.time));
-                aos_msleep(10);
-            }
-            aos_msleep(200);                        //存储完延时一段时间再解锁音频播放（可能会触发kv里的gc线程，等待gc线程执行结束）
-            module_unlock_voice_mutex();
         }
         aos_msleep(500);
     }
@@ -525,6 +566,8 @@ static void model_status_update_thread(void *arg)
         appModule.localSts.washInfo.gateCloseDone1  = (is_signal_filter_trigger(SIGNAL_GATE_1_CLOSE)) ? true : false;
         appModule.localSts.washInfo.gateOpenDone2   = (is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) \
                                                     && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)) ? true : false;
+        appModule.localSts.washInfo.gateCloseDone2  = (!is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) \
+                                                    && !is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)) ? true : false;
         appModule.localSts.washInfo.carTooLong      = (PARK_TOO_LONG == carInfo.parkState) ? false : true;  //超长上报状态0为超长
         appModule.localSts.washInfo.carTooHigh      = is_signal_filter_trigger(SIGNAL_SUPER_HIGH) ? false : true;    //超高上报状态0为超高
 /* *************************************************************  洗车机状态  ************************************************************** */
@@ -555,10 +598,18 @@ static void model_status_update_thread(void *arg)
         else{
             highSewageTimeStamp = aos_now_ms();
         }
+        appModule.localSts.minitor.readyAreaPulse       = xp_osal_get_dev_pos(CONVEYOR_1_MATCH_ID);
+        appModule.localSts.minitor.workAreaPulse        = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
         appModule.localSts.minitor.completeAreaPulse    = xp_osal_get_dev_pos(CONVEYOR_3_MATCH_ID);
         appModule.localSts.minitor.frontLeftPutterPos   = xp_osal_get_dev_pos(FRONT_LEFT_MOVE_MATCH_ID);
         appModule.localSts.minitor.frontRightPutterPos  = xp_osal_get_dev_pos(FRONT_RIGHT_MOVE_MATCH_ID);
-        appModule.localSts.minitor.topBrushCurrent      = get_brush_current(BRUSH_TOP);
+        appModule.localSts.minitor.backLeftPutterPos    = xp_osal_get_dev_pos(BACK_LEFT_MOVE_MATCH_ID);
+        appModule.localSts.minitor.backRightPutterPos   = xp_osal_get_dev_pos(BACK_RIGHT_MOVE_MATCH_ID);
+        appModule.localSts.minitor.topBrushCurrent          = get_brush_current(BRUSH_TOP);
+        appModule.localSts.minitor.frontLeftBrushCurrent    = get_brush_current(BRUSH_FORNT_LEFT);
+        appModule.localSts.minitor.frontRightBrushCurrent   = get_brush_current(BRUSH_FORNT_RIGHT);
+        appModule.localSts.minitor.backLeftBrushCurrent     = get_brush_current(BRUSH_BACK_LEFT);
+        appModule.localSts.minitor.backRightBrushCurrent    = get_brush_current(BRUSH_BACK_RIGHT);
 /* ************************************************************** 检测数据 *************************************************************** */
         strcpy(appModule.localSts.minitor.version, appModule.appVersion);
         strcpy(appModule.localSts.minitor.deviceModel, "AG-America");
@@ -761,6 +812,10 @@ static void model_status_update_thread(void *arg)
             case APP_CRL_GATE_1_CLOSE:
                 isDevIdle = is_dev_move_sta_idle(GATE_1_MACH_ID);
                 break;
+            case APP_CRL_GATE_3_OPEN:
+            case APP_CRL_GATE_3_CLOSE:
+                isDevIdle = is_dev_move_sta_idle(GATE_3_MACH_ID);
+                break;
             case APP_CRL_CONVEYOR_1:
                 isDevIdle = is_dev_move_sta_idle(CONVEYOR_1_MATCH_ID);
                 break;
@@ -795,6 +850,8 @@ static void model_status_update_thread(void *arg)
                     if(AppCmdMap_Table[j].crlObj == i){
                         //这里需要手动区分指令值是bool还是int
                         if(APP_CRL_GATE_1_OPEN == i || APP_CRL_GATE_1_CLOSE == i
+                        || APP_CRL_GATE_2_OPEN == i || APP_CRL_GATE_2_CLOSE == i
+                        || APP_CRL_GATE_3_OPEN == i || APP_CRL_GATE_3_CLOSE == i
                         || APP_CRL_CONVEYOR_1 == i || APP_CRL_CONVEYOR_2 == i || APP_CRL_CONVEYOR_3 == i){
                             *(bool *)AppCmdMap_Table[j].data = 0;
                         }
@@ -855,6 +912,7 @@ void model_cmd_executed_thread(void *arg)
             }
             break;
         case CMD_HOME:
+        case CMD_SAFE_HOME:
             if(true == appModule.localCmd.backHome){
                 if(isStopState && false == appModule.localCmd.devClose && true == get_allow_back_home_flag()) {
                     isGetBackHomeCmd = true;
@@ -878,6 +936,14 @@ void model_cmd_executed_thread(void *arg)
                 if(xp_cmd_excuted_complete) xp_cmd_excuted_complete(cmd.identifier, 0);
             }
             break;
+        case CMD_WASH_MODE:
+            if(NULL_WASH == appModule.localCmd.washMode
+            || NORMAL_WASH == appModule.localCmd.washMode
+            || QUICK_WASH == appModule.localCmd.washMode
+            || FINE_WASH == appModule.localCmd.washMode){
+                wash.washMode = (NULL_WASH == appModule.localCmd.washMode) ? FINE_WASH : appModule.localCmd.washMode;
+            }
+            break;
         case CMD_STOP:
             if(true == appModule.localCmd.stop){
                 xp_service_set_state(STA_STOP);
@@ -891,6 +957,18 @@ void model_cmd_executed_thread(void *arg)
                 // appModule.localCmd.customStopWash = false;        //等报警归位切换到异常状态再清零
                 set_error_state(273, true);
             }
+            break;
+        case CMD_ELECTRICAL_RESET:
+            err_need_flag_handle()->isSetElectricalReset = appModule.localCmd.electricalReset;
+            if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_electrical_reset", 0);
+            break;
+        case CMD_CANCEL_ORDER:
+            //取消当前最新未启动订单
+            for (uint8_t i = 0; i < MAX_QUEUE_ORDER_NUMBER - 1; i++)
+            {
+                wash.orderNumber[i] = wash.orderNumber[i + 1];
+            }
+            if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_cancel_order", 0);
             break;
         case CMD_FLOODLIGHT:            app_crl_dev_set(APP_CRL_FLOODLIGHT, appModule.localCmd.floodlight); break;
         case CMD_AMBIENT_LIGHT:         app_crl_dev_set(APP_CRL_AMBIENT_LIGHT, appModule.localCmd.ambientLight); break;
@@ -925,6 +1003,21 @@ void model_cmd_executed_thread(void *arg)
         case CMD_DETECT_FRIGHT_COLLISION:
         case CMD_DETECT_BLEFT_COLLISION:
         case CMD_DETECT_BRIGHT_COLLISION:
+        case CMD_HIGH_PRESS_END_POS:
+        case CMD_SKIRT_BRUSH_START_POS:
+        case CMD_SKIRT_BRUSH_END_POS:
+        case CMD_SHAMPOO_START_POS:
+        case CMD_SHAMPOO_END_POS:
+        case CMD_TOP_BRUSH_START_POS:
+        case CMD_TOP_BRUSH_END_POS:
+        case CMD_FRONT_BRUSH_START_POS:
+        case CMD_BACK_BRUSH_START_POS:
+        case CMD_BACK_BRUSH_END_POS:
+        case CMD_FRONT_BRUSH_END_POS:
+        case CMD_WAXWATER_START_POS:
+        case CMD_WAXWATER_END_POS:
+        case CMD_DRYER_START_POS:
+        case CMD_DRYER_END_POS:
             for (uint8_t i = 0; i < sizeof(KvDataMap_Table) / sizeof(KvDataMap_Table[0]); i++)
             {
                 if(cmd.cmd_id == KvDataMap_Table[i].cmd){
@@ -942,7 +1035,7 @@ void model_cmd_executed_thread(void *arg)
                         }
                     }
                     if(0 == xp_save_kv_params(KvDataMap_Table[i].key, KvDataMap_Table[i].pData, KvDataMap_Table[i].len)){
-                        LOG_INFO("KV save %s to %d success", KvDataMap_Table[i].key, *(int*)KvDataMap_Table[i].pData);      //这里打印不兼容处int类型外额值
+                        LOG_INFO("KV save %s to %d success", KvDataMap_Table[i].key, *(int*)KvDataMap_Table[i].pData);      //这里打印不兼容除int类型外的值
                     }
                     
                     if(CMD_DEV_CLOSE == cmd.cmd_id && dateValue > 0)    xp_service_set_state(STA_STOP);
@@ -957,6 +1050,21 @@ void model_cmd_executed_thread(void *arg)
                     else if(CMD_DETECT_FRIGHT_COLLISION == cmd.cmd_id)  err_need_flag_handle()->isFrontRightCollisionEnable = appModule.localCmd.func.detectFRightCollision;
                     else if(CMD_DETECT_BLEFT_COLLISION == cmd.cmd_id)   err_need_flag_handle()->isBackLeftCollisionEnable = appModule.localCmd.func.detectBLeftCollision;
                     else if(CMD_DETECT_BRIGHT_COLLISION == cmd.cmd_id)  err_need_flag_handle()->isBackRightCollisionEnable = appModule.localCmd.func.detectBRightCollision;
+                    else if(CMD_HIGH_PRESS_END_POS == cmd.cmd_id)       get_washProcPos_Obj()->endHighPump      = appModule.localCmd.adjust.highPressEndPos;
+                    else if(CMD_SKIRT_BRUSH_START_POS == cmd.cmd_id)    get_washProcPos_Obj()->startSkirtBrush  = appModule.localCmd.adjust.skirtBrushStartPos;
+                    else if(CMD_SKIRT_BRUSH_END_POS == cmd.cmd_id)      get_washProcPos_Obj()->endSkirtBrush    = appModule.localCmd.adjust.skirtBrushEndPos;
+                    else if(CMD_SHAMPOO_START_POS == cmd.cmd_id)        get_washProcPos_Obj()->startShampoo     = appModule.localCmd.adjust.shampooStartPos;
+                    else if(CMD_SHAMPOO_END_POS == cmd.cmd_id)          get_washProcPos_Obj()->endShampoo       = appModule.localCmd.adjust.shampooEndPos;
+                    else if(CMD_TOP_BRUSH_START_POS == cmd.cmd_id)      get_washProcPos_Obj()->startTopBrush    = appModule.localCmd.adjust.topBrushStartPos;
+                    else if(CMD_TOP_BRUSH_END_POS == cmd.cmd_id)        get_washProcPos_Obj()->endTopBrush      = appModule.localCmd.adjust.topBrushEndPos;
+                    else if(CMD_FRONT_BRUSH_START_POS == cmd.cmd_id)    get_washProcPos_Obj()->startFrontBrush  = appModule.localCmd.adjust.frontBrushStartPos;
+                    else if(CMD_BACK_BRUSH_START_POS == cmd.cmd_id)     get_washProcPos_Obj()->startBackBrush   = appModule.localCmd.adjust.backBrushStartPos;
+                    else if(CMD_BACK_BRUSH_END_POS == cmd.cmd_id)       get_washProcPos_Obj()->endBackBrush     = appModule.localCmd.adjust.backBrushEndPos;
+                    else if(CMD_FRONT_BRUSH_END_POS == cmd.cmd_id)      get_washProcPos_Obj()->endFrontBrush    = appModule.localCmd.adjust.frontBrushTailEndPos;
+                    else if(CMD_WAXWATER_START_POS == cmd.cmd_id)       get_washProcPos_Obj()->startWaxwater    = appModule.localCmd.adjust.waxwaterStartPos;
+                    else if(CMD_WAXWATER_END_POS == cmd.cmd_id)         get_washProcPos_Obj()->endWaxwater      = appModule.localCmd.adjust.waxwaterEndPos;
+                    else if(CMD_DRYER_START_POS == cmd.cmd_id)          get_washProcPos_Obj()->startDrying      = appModule.localCmd.adjust.dryerStartPos;
+                    else if(CMD_DRYER_END_POS == cmd.cmd_id)            get_washProcPos_Obj()->endDrying        = appModule.localCmd.adjust.dryerEndPos;
                     break;
                 }
             }
@@ -966,6 +1074,10 @@ void model_cmd_executed_thread(void *arg)
             for (uint8_t i = 0; i < sizeof(AppCmdMap_Table) / sizeof(AppCmdMap_Table[0]); i++)
             {
                 if(cmd.cmd_id == AppCmdMap_Table[i].cmd){
+                    if((CMD_GATE_2_OPEN == cmd.cmd_id || CMD_GATE_2_CLOSE == cmd.cmd_id)
+                    && STA_IDLE == wash.state){
+                        isStopState = true;             //待机状态道闸2也允许动作，保障用户在预备想离开时可以向前离开
+                    }
                     if(isStopState){
                         app_crl_dev_set(AppCmdMap_Table[i].crlObj, dateValue);
                         appModule.isDevMove[AppCmdMap_Table[i].crlObj] = true;
@@ -985,11 +1097,20 @@ void model_cmd_executed_thread(void *arg)
         else if(CMD_GATE_1_CLOSE == cmd.cmd_id && dateValue != 0){
             if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_gate_1_open", 0);
         }
-        else if(CMD_GATE_2_OPEN == cmd.cmd_id && dateValue != 0){
-            if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_gate_2_close", 0);
+        else if(CMD_GATE_2_OPEN == cmd.cmd_id && dateValue != 0){       //2号闸由于没有结束检测，这里直接清除远程状态位
+            if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_gate_2_open", 0);
+            customerOpenGate2TimeStamp = aos_now_ms();
+            isCarWantForwardExit = true;
         }
         else if(CMD_GATE_2_CLOSE == cmd.cmd_id && dateValue != 0){
-            if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_gate_2_open", 0);
+            if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_gate_2_close", 0);
+            isCarWantForwardExit = false;
+        }
+        else if(CMD_GATE_3_OPEN == cmd.cmd_id && dateValue != 0){
+            if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_gate_3_close", 0);
+        }
+        else if(CMD_GATE_3_CLOSE == cmd.cmd_id && dateValue != 0){
+            if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_gate_3_open", 0);
         }
         cmd.cmd_id = CMD_NULL;
     }
@@ -1010,6 +1131,8 @@ void ready_area_detection_thread(void *arg)
     uint64_t carOutReadyAreaTimeStamp = 0;
     bool isCarEntryWorkArea = false;
     bool isPlayForwardVoice = false;
+    uint8_t longCarTryCnt = 0;
+    bool isCarTooLongTriggerEntrance = false;
 
     while(1){
         if(wash.state != STA_IDLE && wash.state != STA_RUN && !wash.isWarningErr){    //非待机和运行状态下，不检测预备区车辆信息，洗车过程中有收到警告错误暂停接待后续车辆
@@ -1027,13 +1150,21 @@ void ready_area_detection_thread(void *arg)
         else if(isCarEntryWorkArea){                //有车完全进入工作区后，关闭2#道闸
             isCarEntryWorkArea = false;
             isPlayForwardVoice = false;             //车辆从预备区到工作区离开停车光电不需要报前进语音
-            osal_dev_io_state_change(BOARD4_OUTPUT_WARNING_BOARD, IO_ENABLE);
             carInReadyAreaTimeStamp = aos_now_ms(); //提供道闸1开的判定时间戳（过一段时间再认为车辆不在预备区）
+            gate_change_state(CRL_SECTION_2, GATE_CLOSE);
         }
 
         //待机和工作状态，若没有车正在进入工作区，则一直尝试关闭道闸2#
-        if(is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) || is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
-            osal_dev_io_state_change(BOARD4_OUTPUT_WARNING_BOARD, IO_DISABLE);
+        if(get_diff_ms(customerOpenGate2TimeStamp) > 30000 && !is_signal_filter_trigger(SIGNAL_ENTRANCE)
+        && (is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) || is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN))){
+            gate_change_state(CRL_SECTION_2, GATE_CLOSE);
+            isCarWantForwardExit = false;
+        }
+
+        //出口和完成光电同事触发，认为车已经向前离开，关闭2号闸
+        if(isCarWantForwardExit && is_signal_filter_trigger(SIGNAL_EXIT) && is_signal_filter_trigger(SIGNAL_FINISH)){
+            gate_change_state(CRL_SECTION_2, GATE_CLOSE);
+            isCarWantForwardExit = false;
         }
 
         //1号道闸的关闭需要有一个触发信号，不能用时间判定，避免开闸后长时间未进入预备区道闸闸门关闭
@@ -1049,16 +1180,21 @@ void ready_area_detection_thread(void *arg)
             else if(!is_dev_move_sta_idle(GATE_1_MACH_ID)){
                 gate_change_state(CRL_SECTION_1, GATE_STOP);
             }
-            else if(!is_signal_filter_trigger(SIGNAL_GATE_1_OPEN)){
-                gate_change_state(CRL_SECTION_1, GATE_OPEN);
-            }
         }
         //长时间没有触发预备区的光电则认为没有车在预备区，有订单的话需要重新打开道闸
         else if(!is_signal_filter_trigger(SIGNAL_ALL_IN) && get_diff_ms(carOutReadyAreaTimeStamp) > 5000){
             carInfo.isCarInReadyArea = false;
+            longCarTryCnt = 0;
         }
 
-        if(is_signal_filter_trigger(SIGNAL_LEFT_SKEW)){          //左偏光电触发，说明停车偏左
+        if(isCarWantForwardExit){                                   //客户不想洗操作2号道闸向前离开时显示请前进
+            //语音停止只一遍，避免一直通讯
+            if(carInfo.parkState != PARK_TOO_BACK) voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_SILENCE);
+            xp_ag_osal_get()->screen.display(AG_CAR_FORWARD);
+            carInfo.parkState = PARK_TOO_BACK;
+            longCarTryCnt = 0;
+        }
+        else if(is_signal_filter_trigger(SIGNAL_LEFT_SKEW)){        //左偏光电触发，说明停车偏左
             if(PARK_TOO_LEFT != carInfo.parkState){
                 carInfo.voiceCnt = 0;
                 xp_ag_osal_get()->screen.display(AG_CAR_LEFT_SKEW);
@@ -1088,20 +1224,41 @@ void ready_area_detection_thread(void *arg)
             carInReadyAreaTimeStamp = aos_now_ms();
             isPlayForwardVoice = true;
             //判断当前停车位置是否合适
-            if(is_signal_filter_trigger(SIGNAL_ALL_IN)){
+            if(longCarTryCnt >= 3 || is_signal_filter_trigger(SIGNAL_ALL_IN)){
+                if(is_signal_filter_trigger(SIGNAL_ENTRANCE)){
+                    isCarTooLongTriggerEntrance = true;
+                    if(longCarTryCnt < 3) carInfo.parkState = PARK_EMPTY; //清除状态，使后面显示正确
+                    longCarTryCnt = 3;      //全进、停车、入口光电全部触发直接显示超长
+                }
+                else if(isCarTooLongTriggerEntrance){
+                    longCarTryCnt++;
+                    isCarTooLongTriggerEntrance = false;
+                }
                 if(PARK_TOO_LONG != carInfo.parkState){
                     carInfo.voiceCnt = 0;
-                    xp_ag_osal_get()->screen.display(AG_CAR_TOO_LONG);
+                    //停车光电和全进光电同时挡住时，车超长，尝试让车往前开一点靠近入口光电的位置
+                    if(longCarTryCnt < 3){
+                        xp_ag_osal_get()->screen.display(AG_CAR_FORWARD);
+                    }
+                    else{
+                        xp_ag_osal_get()->screen.display(AG_CAR_TOO_LONG);
+                    }
                 }
                 if(0 == carInfo.voiceCnt 
                 || (get_diff_ms(carInfo.parkStaStartT) > 10000 && carInfo.voiceCnt < 2)){     //限制语音播报时间和次数
                     carInfo.voiceCnt++;
-                    voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_TOO_LONG);
+                    if(longCarTryCnt < 3){
+                        voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_FORWARD);
+                    }
+                    else{
+                        voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_TOO_LONG);
+                    }
                     carInfo.parkStaStartT = aos_now_ms();
                 }
                 carInfo.parkState = PARK_TOO_LONG;
             }
             else if(is_signal_filter_trigger(SIGNAL_ENTRANCE)){      //停车光电和入口光电都触发，说明停车太靠前
+                isCarTooLongTriggerEntrance = true;
                 if(PARK_TOO_FRONT != carInfo.parkState){
                     carInfo.voiceCnt = 0;
                     xp_ag_osal_get()->screen.display(AG_CAR_BACKOFF);
@@ -1117,20 +1274,20 @@ void ready_area_detection_thread(void *arg)
             else{                                                                   //仅停车光电触发，说明停好车
                 if(PARK_OK != carInfo.parkState){
                     carInfo.voiceCnt = 0;
-                    xp_ag_osal_get()->screen.display(isNextCarWashWait ? AG_CAR_READY_TRANSFER : AG_CAR_STOP);
+                    xp_ag_osal_get()->screen.display((get_is_allow_next_car_wash_flag() && wash.orderNumber[0] != 0) ? AG_CAR_READY_TRANSFER : AG_CAR_STOP);
                     carInfo.parkOkTimeStamp = aos_now_ms();
                 }
-                // else if(!isNextCarWashWait && get_diff_ms(carInfo.parkOkTimeStamp) > 18000){
+                // else if(get_is_allow_next_car_wash_flag() && get_diff_ms(carInfo.parkOkTimeStamp) > 18000){
                 //     xp_ag_osal_get()->screen.display((0 == appModule.localCmd.scanCode) ? AG_SCAN_CODE : AG_CAR_STOP);
                 // }
-                if(!isNextCarWashWait){
+                // if(get_is_allow_next_car_wash_flag()){
                     if(0 == carInfo.voiceCnt
                     || (get_diff_ms(carInfo.parkStaStartT) > 15000 && carInfo.voiceCnt < 3)){
                         carInfo.voiceCnt++;
                         voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_STOP);
                         carInfo.parkStaStartT = aos_now_ms();
                     }
-                }
+                // }
                 carInfo.parkState = PARK_OK;
             }
         }
@@ -1153,20 +1310,30 @@ void ready_area_detection_thread(void *arg)
             carInfo.parkState = PARK_TOO_BACK;
         }
 
-        //有订单则且无车辆在预备区准备则打开1号道闸
-        if(wash.orderNumber[0] != 0 && !carInfo.isCarInReadyArea){
+        //有订单且无车辆在预备区准备则打开1号道闸
+        
+
+        //只要触发全进光电就打开1号道闸，使在预备区的无订单车辆可以向后退出
+        if(is_signal_filter_trigger(SIGNAL_ALL_IN)){
             if(is_dev_move_sta_idle(GATE_1_MACH_ID) && !is_signal_filter_trigger(SIGNAL_GATE_1_OPEN)){
                 gate_change_state(CRL_SECTION_1, GATE_OPEN);
             }
         }
+        else if(!carInfo.isCarInReadyArea){     //没车在预备区的话根据有无订单切换道闸开关
+            if(wash.orderNumber[0] != 0){
+                if(is_dev_move_sta_idle(GATE_1_MACH_ID) && !is_signal_filter_trigger(SIGNAL_GATE_1_OPEN)){
+                    gate_change_state(CRL_SECTION_1, GATE_OPEN);
+                }
+            }
+            else{
+                if(is_dev_move_sta_idle(GATE_1_MACH_ID) && !is_signal_filter_trigger(SIGNAL_GATE_1_CLOSE)){
+                    gate_change_state(CRL_SECTION_1, GATE_CLOSE);
+                }
+            }
+        }
 
         //允许洗车判定
-        if(PARK_OK == carInfo.parkState){
-            carInfo.isAllowToWash = true;
-        }
-        else{
-            carInfo.isAllowToWash = false;
-        }
+        carInfo.isAllowToWash = (PARK_OK == carInfo.parkState) ? true : false;
         aos_msleep(100);
     }
 }
@@ -1236,15 +1403,15 @@ static int xp_service_set_state(Type_ServiceState_Enum state)
             wash.state = state;
         }
         else {
-            LOG_UPLOAD("Switch not allowed, %s -> %s", xp_get_state_str(currState), xp_get_state_str(state));
+            LOG_UPLOAD("Switch not allowed, %s -> %s\r\n", xp_get_state_str(currState), xp_get_state_str(state));
             return -1;				    //不允许的状态切换
         }
 
         wash.lastState = currState;
         wash.isFirstSwitch = true;
-        LOG_UPLOAD("State switch OK, %s -> %s", xp_get_state_str(currState), xp_get_state_str(state));
+        LOG_UPLOAD("State switch OK, %s -> %s\r\n", xp_get_state_str(currState), xp_get_state_str(state));
 
-        //后侧刷只在停止或异常状态下移动限位超过35
+        //后侧刷只在停止或异常状态下移动限位超过60
         if(STA_STOP == wash.state || STA_EXCEPTION == wash.state){
             osal_set_dev_limit_mode(BACK_LEFT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, 110);
             osal_set_dev_limit_mode(BACK_RIGHT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, 110);
@@ -1252,8 +1419,8 @@ static int xp_service_set_state(Type_ServiceState_Enum state)
             memset(wash.orderNumber, 0, sizeof(wash.orderNumber));
         }
         else{
-            osal_set_dev_limit_mode(BACK_LEFT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, 35);
-            osal_set_dev_limit_mode(BACK_RIGHT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, 35);
+            osal_set_dev_limit_mode(BACK_LEFT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, 60);
+            osal_set_dev_limit_mode(BACK_RIGHT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, 60);
         }
         err_need_flag_handle()->isDevIdleSta                = (STA_IDLE == wash.state) ? true : false;
         err_need_flag_handle()->isDevRunSta                 = (STA_RUN == wash.state) ? true : false;
@@ -1268,7 +1435,7 @@ static int xp_service_set_state(Type_ServiceState_Enum state)
         if(STA_STOP == state || STA_EXCEPTION == state){
             stop_all_dev_run();
         }
-        LOG_UPLOAD("Already in %s state", xp_get_state_str(currState));
+        printf("Already in %s state\r\n", xp_get_state_str(currState));
     }
     return 0;
 }
@@ -1282,7 +1449,7 @@ static int xp_service_start_wash_ready(Type_ServiceState_Enum state)
 {
     LOG_INFO("Device start wash");
     err_need_flag_handle()->isDetectBrushCroooked = true;
-    osal_dev_io_state_change(BOARD4_OUTPUT_WARNING_BOARD, IO_ENABLE);
+    gate_change_state(CRL_SECTION_2, GATE_OPEN);
     set_new_car_ready_wash_falg(true);
     set_is_allow_next_car_wash_flag(false);
     xp_ag_osal_get()->screen.display(AG_CAR_WASH_STARTING);
@@ -1344,9 +1511,14 @@ static void check_button(void)
             if(!recordIsButtomTrig[i]){
                 if(BUTTON_START_WASH == i || BUTTON_ENTRY_START == i){
                     isGetStartCmd = true;
-                    appModule.localCmd.newOrder = TEST_LOCAL_ORDER_NUM;
+                    // appModule.localCmd.newOrder = TEST_LOCAL_ORDER_NUM;
+                    if(++kvService.order.offlineStartNum > 50000)   kvService.order.offlineStartNum = 0;
+                    kvService.order.isNewOfflineOrderSave = true;
+                    appModule.localCmd.newOrder = wash.washMode*100000 + kvService.order.offlineStartNum;
+                    appModule.localSts.washInfo.offlineOrderNum = appModule.localCmd.newOrder;      //上传订单号（包含洗车模式信息）
                 }
                 else if(BUTTON_STOP_WASH == i){
+                    xp_service_set_state(STA_STOP);
                 }
                 else if(BUTTON_POWER_RESET == i){
                     if(false == get_emc_power_off_sta()){
@@ -1370,7 +1542,6 @@ void xp_service_thread(void* arg)
     uint8_t printCnt = 0;
     uint64_t timeStamp = 0;
     uint64_t carBeReadyTimeStamp = 0;
-    uint64_t carOrderStartTimeStamp = 0;
     uint64_t voiceTimeStamp = 0;
     uint8_t voiceCnt = 0;
     uint8_t signalTriggerCnt = 0;
@@ -1396,7 +1567,6 @@ void xp_service_thread(void* arg)
                         wash.orderNumber[i] = appModule.localCmd.newOrder;
                         appModule.localCmd.newOrder = 0;
                         LOG_UPLOAD("Currently %d orders have been accumulated", i + 1);
-                        carOrderStartTimeStamp = aos_now_ms();
                         break;
                     }
                 }
@@ -1405,36 +1575,47 @@ void xp_service_thread(void* arg)
                 LOG_UPLOAD("Get start cmd, but no order number");
             }
         }
+        
+        // //接收到洗车指令后若还不允许下一辆车进入则等待允许后重置洗车指令
+        // if(isGetStartCmd && !get_is_allow_next_car_wash_flag()){
+        //     isGetStartCmd = false;
+        //     isNextCarWashWait = true;
+        //     xp_ag_osal_get()->screen.display(AG_CAR_READY_TRANSFER);
+        //     LOG_UPLOAD("New car want wash need wait...");
+        // }
+        // //等待的车辆在允许下一辆车进入时，确定没有左右挺偏状态就启动
+        // if(isNextCarWashWait && get_is_allow_next_car_wash_flag()){
+        //     isGetStartCmd = true;
+        //     isNextCarWashWait = false;
+        //     //如果是等待的车辆，只要不是左右停偏，都认为允许启动
+        //     carInfo.isAllowToWash = (carInfo.parkState != PARK_TOO_LEFT && carInfo.parkState != PARK_TOO_RIGHT) ? true : false;
+        // }
+
         //识别当前是否可以启动新订单车辆
         if(get_is_allow_next_car_wash_flag()){
-            isNextCarWashWait = false;
             if(carInfo.isAllowToWash && wash.orderNumber[0] != 0){  //车辆停车位置准确后等待一段时间后启动
                 if(!isCarBeReady){
                     isCarBeReady = true;
                     carBeReadyTimeStamp = aos_now_ms();
                 }
-                else if(get_diff_ms(carBeReadyTimeStamp) > 2000){
+                else if(get_diff_ms(carBeReadyTimeStamp) > 8000){
                     startWashFlag = true;
                 }
-                carOrderStartTimeStamp = aos_now_ms();
             }
             else{
-                //订单等待超时后清楚所有订单
-                if(wash.orderNumber[0] != 0 && get_diff_ms(carOrderStartTimeStamp) > 180000){
-                    memset(wash.orderNumber, 0, sizeof(wash.orderNumber));
-                }
                 isCarBeReady = false;
             }
-        }
-        else{
-            isNextCarWashWait = true;
         }
         //有车结束出口显示绿灯，离开完成光电后红灯
         if(STA_IDLE == wash.state || STA_RUN == wash.state){
             if(!is_signal_filter_trigger(SIGNAL_FINISH)){
                 carInfo.isCarFinishWash = false;
             }
-            if(carInfo.isCarFinishWash){
+            if(isCarWantForwardExit){           //客户不想洗操作2号道闸向前离开时显示绿灯
+                osal_dev_io_state_change(BOARD1_OUTPUT_RED_LIGHT_EXIT, IO_DISABLE);
+                osal_dev_io_state_change(BOARD1_OUTPUT_GREEN_LIGHT_EXIT, IO_ENABLE);
+            }
+            else if(carInfo.isCarFinishWash){
                 osal_dev_io_state_change(BOARD1_OUTPUT_RED_LIGHT_EXIT, IO_DISABLE);
                 osal_dev_io_state_change(BOARD1_OUTPUT_GREEN_LIGHT_EXIT, IO_ENABLE);
                 if(voiceCnt < 5 && get_diff_ms(voiceTimeStamp) > 10000){
@@ -1474,7 +1655,6 @@ void xp_service_thread(void* arg)
                 osal_dev_io_state_change(BOARD5_OUTPUT_SIGNAL_LAMP_YELLOW,  IO_DISABLE);
                 set_is_allow_next_car_wash_flag(true);
                 set_error_state(8126, false);
-                set_error_state(8215, false);
             }
 
             if (startWashFlag) {
@@ -1489,7 +1669,10 @@ void xp_service_thread(void* arg)
 
             //待机状态检测防追尾光电若灭10S以上，则认为异常，转入异常状态
             if(is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){
-                if(signalTriggerCnt++ > 100)    xp_service_set_state(STA_EXCEPTION);
+                if(signalTriggerCnt++ > 100){
+                    xp_service_set_state(STA_EXCEPTION);
+                    set_error_state(8115, true);
+                }
             }
             else{
                 signalTriggerCnt = 0;
@@ -1581,6 +1764,7 @@ void xp_service_thread(void* arg)
                 if(RET_COMPLETE == ret){
                     set_error_state(8101, false);
                     LOG_INFO("Back home success");
+                    voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_SILENCE);
                     xp_service_set_state(STA_IDLE);
                 }
                 else{
@@ -1606,7 +1790,7 @@ void xp_service_thread(void* arg)
                 stop_all_dev_run();
                 if(false == get_emc_power_off_sta()){
                     if(!is_signal_filter_trigger(SIGNAL_GATE_1_OPEN))    gate_change_state(CRL_SECTION_1, GATE_OPEN);    //首次切换到停止或异常状态，打开两个道闸
-                    osal_dev_io_state_change(BOARD4_OUTPUT_WARNING_BOARD, IO_ENABLE);
+                    gate_change_state(CRL_SECTION_2, GATE_OPEN);
                 }
                 
                 if(STA_RECOVER == wash.lastState){              //上次为恢复状态，恢复失败则清除远程归位点位
@@ -1635,11 +1819,12 @@ void xp_service_thread(void* arg)
                 }
             }
 
-            //急停状态下打开所有抱闸
+            //急停状态下打开所有道闸
             if(true == get_emc_power_off_sta()){
+                // 刚上电的时候处于急停状态，道闸1即使在开位也没有开位信号，道闸会动一下
                 if(!is_signal_filter_trigger(SIGNAL_GATE_1_OPEN) && is_dev_move_sta_idle(GATE_1_MACH_ID))   gate_change_state(CRL_SECTION_1, GATE_OPEN);
                 if(!is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) || !is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
-                    osal_dev_io_state_change(BOARD4_OUTPUT_WARNING_BOARD, IO_ENABLE);
+                    gate_change_state(CRL_SECTION_2, GATE_OPEN);
                 }
             }
             else{
@@ -1647,9 +1832,9 @@ void xp_service_thread(void* arg)
                 && false == appModule.localCmd.devClose && true == get_allow_back_home_flag()
                 && !is_signal_filter_trigger(SIGNAL_FL_COLLISION) && !is_signal_filter_trigger(SIGNAL_FR_COLLISION)
                 && !is_signal_filter_trigger(SIGNAL_BL_COLLISION) && !is_signal_filter_trigger(SIGNAL_BR_COLLISION)
-                && !is_signal_filter_trigger(SIGNAL_STOP) && !is_signal_filter_trigger(SIGNAL_ENTRANCE)
-                && !is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE) && !is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)
-                && !is_signal_filter_trigger(SIGNAL_EXIT) && !is_signal_filter_trigger(SIGNAL_FINISH)){
+                && !is_signal_filter_trigger(SIGNAL_ENTRANCE) && !is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE) 
+                && !is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT) && !is_signal_filter_trigger(SIGNAL_EXIT) 
+                && !is_signal_filter_trigger(SIGNAL_FINISH)){
                     xp_service_set_state(STA_RECOVER);
                     isAutoResetDev = false;
                 }
@@ -1859,6 +2044,7 @@ int xp_service_debug(char* type, char* fun, char* param)
         else if (strcasecmp(fun, "clear_wash_record") == 0){
 			kvService.order.completeCnt   = 0;
 			kvService.order.failCnt       = 0;
+			kvService.order.offlineStartNum = 0;
 			memset(&kvService.order.today, 0, sizeof(kvService.order.today));
             memset(kvService.order.month, 0, sizeof(kvService.order.month));
             memset(kvService.order.daily, 0, sizeof(kvService.order.daily));
@@ -1866,6 +2052,7 @@ int xp_service_debug(char* type, char* fun, char* param)
 
             kvService.order.isNewCompleteOrderSave = true;
             kvService.order.isNewFailedOrderSave = true;
+            kvService.order.isNewOfflineOrderSave = true;
             kvService.order.isNewOrderSave = true;
 		}
     }

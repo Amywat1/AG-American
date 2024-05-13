@@ -17,13 +17,13 @@
 /*打印等级*/
 #define HI_LOG(levle, format, args...) \
 	do{ \
-		printo("[%s] %s [%d]: "format"\r\n", levle, __FN__, __LINE__, ##args);\
+		printo("[%s] [%d]: "format"\r\n", levle, __LINE__, ##args);\
 	}while(0)
 
 #define UP_LOG(levle, format, args...) \
 	do{ \
 		print_up_log("--%d: "format"", __LINE__, ##args);\
-		printo("[%s] %s [%d]: "format"\r\n", levle, __FN__, __LINE__, ##args);\
+		printo("[%s] [%d]: "format"\r\n", levle, __LINE__, ##args);\
 	}while(0)
 
 

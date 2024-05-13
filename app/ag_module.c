@@ -17,7 +17,7 @@
 #define BRUSH_CURRENT_UPDATE_THREAD_FREQ        (10)            //毛刷电流更新线程周期
 
 #define TOP_BRUSH_WARNING_CUR                   (180)           //顶刷报警电流
-#define SIDE_BRUSH_WARNING_CUR                  (220)           //侧刷报警电流
+#define SIDE_BRUSH_WARNING_CUR                  (180)           //侧刷报警电流
 #define DEV_FORCE_MOVE_TIME                     (1000)          //设备单次强制移动时间（ms）
 #define SUPPORT_WASH_NUM_MAX                    (3)             //支持的最大洗车数量
 #define ENCODER_FLIP_VALUE                      (0x00FFFFFF)    //子板码盘计数最大值（超过该值翻转清零重新计数，与子板最大计数值对应）
@@ -33,28 +33,11 @@
 #define PRESS_PROTECT_REEASE_CNT                (5)             //触压保护释放确认次数
 #define VELOCITY_LIMIT_LEVEL_STOP               (CMD_STILL)
 #define VELOCITY_NO_LIMIT                       (CMD_FORWARD)   //无速度限制，按最快速度
+#define PICKUP_SLOPE_THRESHOLD_VALUE            (20)            //皮卡斜率判定阈值（高度）
+#define SLPOE_JUDGE_FREQ_VALUE                  (35)            //斜率判定周期值（行走距离）
 
-//机构移动偏移参数（相对于车头的偏移，即相对于入口光电的偏移）
-#define HEAD_OFFSET_CLOSE_SKIRT_BRUSH_ROTATION  (50)            //车头接近裙边刷旋转的偏移值
-#define HEAD_OFFSET_CLOSE_SKIRT_BRUSH_OUT       (80)            //车头接近裙边刷伸出的偏移值
-#define HEAD_OFFSET_CLOSE_SHAMPOO               (120)           //车头接近香波的偏移值
-#define HEAD_OFFSET_CLOSE_TOP_BRUSH             (150)           //车头接近顶刷的偏移值
-#define HEAD_OFFSET_CLOSE_FRONT_BRUSH           (380)           //车头接近前侧刷的偏移值
+#define SIGNAL_ENTRANCE_TO_TOP_BRUSH_OFFSET     (150)           //入口光电到顶刷的偏移值
 #define HEAD_OFFSET_FRONT_BRUSH_OVER_HEAD       (440)           //前侧刷越过车头的偏移值
-#define HEAD_OFFSET_CLOSE_BACK_BRUSH            (650)           //车头接近后侧刷的偏移值
-#define HEAD_OFFSET_CLOSE_WAXWATER              (700)           //车头接近蜡水的偏移值
-#define HEAD_OFFSET_CLOSE_DRYER                 (1000)          //车头接近风机的偏移值
-
-#define TAIL_OFFSET_LEAVE_HIGH_PUMP             (30)            //车尾离开高压水的偏移值
-#define TAIL_OFFSET_LEAVE_SKIRT_BRUSH           (110)           //车尾离开裙边刷的偏移值
-#define TAIL_OFFSET_LEAVE_SHAMPOO               (170)           //车尾离开香波的偏移值
-#define TAIL_OFFSET_LEAVE_TOP_BRUSH             (330)           //车尾离开顶刷的偏移值
-#define TAIL_OFFSET_LEAVE_FRONT_BRUSH           (460)           //车尾离开前侧刷的偏移值
-#define TAIL_OFFSET_LEAVE_BACK_BRUSH            (650)           //车尾离开后侧刷的偏移值
-#define TAIL_OFFSET_LEAVE_BACK_WAXWATER         (700)           //车尾离开蜡水的偏移值
-#define TAIL_OFFSET_LEAVE_DRYER                 (1180)          //车尾离开风机的偏移值
-
-#define SIGNAL_ENTRANCE_TO_TOP_BRUSH_OFFSET     (HEAD_OFFSET_CLOSE_TOP_BRUSH)           //入口光电到顶刷的偏移值
 #define PUTTER_GO_MIDDLE_OFFSET                 (90)            //侧刷一起移动到中间的偏移值
 #define PUTTER_GO_SELF_SIDE_OFFSET              (30)            //侧刷一起移动到左侧的偏移值
 #define PUTTER_GO_ANOTHER_SIDE_OFFSET           (150)           //侧刷一起移动到右侧的偏移值
@@ -184,23 +167,7 @@ typedef enum {
 	PROC_FINISH_DYRING,                 //结束吹风
 } Type_ProcType_Enum;
 
-typedef struct{
-    uint16_t startSkirtBrushOut;
-    uint16_t startShampoo;
-    uint16_t startTopBrush;
-    uint16_t startFrontBrush;
-    uint16_t startBackBrush;
-    uint16_t startWaxwater;
-    uint16_t startDrying;
-    uint16_t finishHighPump;
-    uint16_t finishSkirtBrush;
-    uint16_t finishTopBrush;
-    uint16_t finishFrontBrush;
-    uint16_t finishBackBrush;
-    uint16_t finishWaxwater;
-    uint16_t finishDrying;
-} Type_CarProcChangePosInfo_Def;
-Type_CarProcChangePosInfo_Def   procChangePos = {0};
+Type_CarProcPosInfo_Def   washProcPos = {0};
 
 typedef struct{
     uint32_t            headPos;            //车头位置
@@ -269,8 +236,6 @@ static Type_DriverCmdInfo_Def   priSwCmd[PRI_SWITCH_NUM]    = {0};  //私有开�
 static bool isDriverExecuted = false;                   //驱动执行标志
 static bool isSideBrushCantMoveToPose = false;          //侧刷无法到达指定位置标志
 static bool isClearConveyorEncSuccess = false;          //输送带脉冲值清零成功标志
-
-static uint8_t topBrushCurrentTooLowCnt = 0;
 
 //私有开关信息
 /* osalMatchId ： 驱动机构的索引号 */
@@ -349,6 +314,7 @@ void brush_current_update_thread(void *arg);
 void dev_zero_check_thread(void *arg);
 void conveyor_run_crl_thread(void *arg);
 void side_brush_follow_thread(void *arg);
+void voice_play_thread(void *arg);
 
 /*                                                         =======================                                                         */
 /* ========================================================     打印字符查询表     ======================================================== */
@@ -368,10 +334,19 @@ static const char* xp_get_brush_str(Type_BrushType_Enum type)
 int xp_service_module_init(void)
 {
     aos_task_new("actuator_action_ctr",	switch_driver_control_thread,NULL, 2048);
-    // aos_task_new("brush_state_update",  brush_current_update_thread, NULL, 1024);
+    aos_task_new("brush_state_update",  brush_current_update_thread, NULL, 1024);
     aos_task_new("dev_zero_check",	    dev_zero_check_thread,       NULL, 1024);
     aos_task_new("conveyor_run_crl",	conveyor_run_crl_thread,     NULL, 1024);
     aos_task_new("side_brush_follow",	side_brush_follow_thread,    NULL, 2048);
+    aos_task_new("voice_play",	        voice_play_thread,           NULL, 8192);
+
+    //这里需要初始化报警触压值，不然直接转刷子会认为触压值过大
+    for (uint8_t i = 0; i < BRUSH_NUM; i++)
+    {
+        memset(&brush[i], 0, sizeof(Type_BrushInfo_Def));
+        brush[i].pressWarning = (BRUSH_TOP == i) ? TOP_BRUSH_WARNING_CUR : SIDE_BRUSH_WARNING_CUR;
+        brush[i].init = 1;
+    }
 
     // for (uint8_t i = 0; i < COM_SWITCH_NUMBER; i++)
     // {
@@ -417,19 +392,20 @@ void voice_play_thread(void *arg)
     while (1)
     {
         aos_sem_wait(&voice_sem, AOS_WAIT_FOREVER);
-        aos_mutex_lock(&voice_mutex, 500);
-        voiceStartTimeStamp = aos_now_ms();
-        xp_ag_osal_get()->voice.play(AG_VOICE_POS_EXIT, voiceMode);
+        if(0 == aos_mutex_lock(&voice_mutex, 1000)){
+            voiceStartTimeStamp = aos_now_ms();
+            xp_ag_osal_get()->voice.play(AG_VOICE_POS_EXIT, voiceMode);
+        }
         aos_mutex_unlock(&voice_mutex);
     }
 }
 
-void module_lock_voice_mutex(uint16_t overTime)
+int module_lock_voice_mutex(uint16_t overTime)
 {
     aos_mutex_lock(&voice_mutex, overTime);
 }
 
-void module_unlock_voice_mutex(void)
+int module_unlock_voice_mutex(void)
 {
     aos_mutex_unlock(&voice_mutex);
 }
@@ -552,7 +528,6 @@ void conveyor_run_crl_thread(void *arg)
                     // else{
                     //     conveyor_move(CRL_SECTION_1, CMD_STILL);
                     // }
-                    
                 }
             }
         }
@@ -588,7 +563,7 @@ void conveyor_run_crl_thread(void *arg)
             else{
                 //输送带2#，3#动作相同，不重复执行
             }
-            if(carWash[headWashCarId].isCarMoveCompleteArea && carWash[headWashCarId].headOffsetPos > HEAD_OFFSET_CLOSE_BACK_BRUSH + 50){
+            if(carWash[headWashCarId].isCarMoveCompleteArea && carWash[headWashCarId].headOffsetPos > washProcPos.startBackBrush + 100){
                 //车辆输送到完成区时间过长则认为异常
                 if(get_diff_ms(exitNotTriggerTimeStamp) > 140000){
                     LOG_UPLOAD("Car move to complete area over time");
@@ -607,8 +582,8 @@ void conveyor_run_crl_thread(void *arg)
                     carWash[headWashCarId].isCarMoveCompleteArea = false;
                     LOG_UPLOAD("Car arrive ahead of conveyor move");
                 }
-                else if(xp_osal_get_dev_pos(CONVEYOR_3_MATCH_ID) - finishAreaConveyorEnc > 100
-                || get_diff_ms(exitTriggerTimeStamp) > 10000){
+                else if((xp_osal_get_dev_pos(CONVEYOR_3_MATCH_ID) - finishAreaConveyorEnc > 100)       //一个脉冲6mm左右
+                || is_signal_filter_trigger(SIGNAL_CAR_WHEEL_OUT) || get_diff_ms(exitTriggerTimeStamp) > 10000){
                     conveyor_move(CRL_SECTION_3, CMD_STILL);        //车辆离开出口光电一段距离或者时间后，停止输送带3#
                     isExitSignalTrigger = false;
                     carWash[headWashCarId].isCarMoveCompleteArea = false;
@@ -1042,6 +1017,9 @@ int gate_change_state(Type_CrlType_Enum type, int cmd)
     if(CRL_SECTION_1 == type || CRL_ALL_SECTION == type){
         pri_switch_set_cmd_move(PRI_SWITCH_GATE_1, GATE_1_MACH_ID, cmd, true);
     }
+    if(CRL_SECTION_2 == type || CRL_ALL_SECTION == type){
+        osal_dev_io_state_change(BOARD4_OUTPUT_WARNING_BOARD, cmd < 0 ? IO_ENABLE : IO_DISABLE);
+    }
     if(CRL_SECTION_3 == type || CRL_ALL_SECTION == type){
         pri_switch_set_cmd_move(PRI_SWITCH_GATE_3, GATE_3_MACH_ID, cmd, true);
     }
@@ -1094,7 +1072,7 @@ static int module_dev_reset(Type_ZeroCheckType_Def *devType)
             if(pC)  strcat(pC,"Gate1# ");
         }
         if(devType->entryWorkAreaGate){
-            osal_dev_io_state_change(BOARD4_OUTPUT_WARNING_BOARD, IO_DISABLE);
+            osal_dev_io_state_change(BOARD4_OUTPUT_WARNING_BOARD, IO_ENABLE);       //STOP警示牌是边沿触发，这里先置低电平
             if(pC)  strcat(pC,"Gate2# ");
         }
         LOG_INFO("%sstart reset~~~", pC);
@@ -1135,11 +1113,16 @@ static int module_dev_reset(Type_ZeroCheckType_Def *devType)
         }
         resetSta |= 0x0010;
     }
-    if(devType->entryReadyAreaGate && !is_signal_filter_trigger(SIGNAL_GATE_1_CLOSE)){
-        resetSta |= 0x0020;
-    }
+    // 这里不做关到位检测，避免有车在预备区挡住了全进光电导致道闸落不下来
+    // if(devType->entryReadyAreaGate && !is_signal_filter_trigger(SIGNAL_GATE_1_CLOSE)){
+    //     resetSta |= 0x0020;
+    // }
     if(devType->entryWorkAreaGate && (is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) || is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN))){
         resetSta |= 0x0040;
+    }
+
+    if(devType->entryWorkAreaGate && get_diff_ms(moduleSta.timeStamp) > 1000){
+        osal_dev_io_state_change(BOARD4_OUTPUT_WARNING_BOARD, IO_DISABLE);
     }
 
     if(0 == resetSta){
@@ -1155,6 +1138,13 @@ static int module_dev_reset(Type_ZeroCheckType_Def *devType)
 
     if(get_diff_ms(moduleSta.timeStamp) > 20000 + stepSta.pauseTime){
         LOG_UPLOAD("module_dev_reset over time, reset status 0x%X", resetSta);
+        if(resetSta & 0x0001)   set_error_state(329, true);
+        if(resetSta & 0x0002)   set_error_state(8229, true);
+        if(resetSta & 0x0004)   set_error_state(8230, true);
+        if(resetSta & 0x0008)   set_error_state(8231, true);
+        if(resetSta & 0x0010)   set_error_state(8232, true);
+        if(resetSta & 0x0020)   set_error_state(8233, true);
+        if(resetSta & 0x0040)   set_error_state(8234, true);
         return ERR_TIMEOUT;
     }
     return NOR_CONTINUE;
@@ -1232,7 +1222,7 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
             front_side_brush_rotation(CRL_ONLY_RIGHT, CMD_BACKWARD);
             water_system_control(WATER_FRONT_SIDE, true);
             // front_side_brush_move_pos(CRL_BOTH, CMD_FORWARD, PUTTER_GO_MIDDLE_OFFSET);
-            front_side_brush_move_time(CRL_BOTH, CMD_FORWARD, isCarIntrude ? 800 : 7500);
+            front_side_brush_move_time(CRL_BOTH, CMD_FORWARD, isCarIntrude ? 800 : 5500);
             currentSum[BRUSH_FORNT_LEFT] = 0;
             currentSum[BRUSH_FORNT_RIGHT] = 0;
             break;
@@ -1350,12 +1340,12 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
                     }
                     LOG_DEBUG("Top base current %d, ===Record current %s", brush[BRUSH_TOP].baseCurrent, bufValue);
                     //顶刷控制参数
-                    brush[BRUSH_TOP].pressTouchcar  = brush[BRUSH_TOP].baseCurrent  + 5;
-                    brush[BRUSH_TOP].pressL         = brush[BRUSH_TOP].baseCurrent  + 5;       //自由跟随状态下，阈值下限值正常，使吃毛深度合适
-                    brush[BRUSH_TOP].pressL_NoBW    = brush[BRUSH_TOP].baseCurrent  + 8;       //跟随不允许向上，阈值较下限值高，能及时向下贴合车身
-                    brush[BRUSH_TOP].pressH_NoFW    = brush[BRUSH_TOP].baseCurrent  + 8;       //跟随不允许向下，阈值较上限值低，不要刷太深
-                    brush[BRUSH_TOP].pressH         = brush[BRUSH_TOP].baseCurrent  + 15;      //自由跟随状态下，阈值上限值偏高，加大阈值范围，防止点头
-                    brush[BRUSH_TOP].pressProtect   = brush[BRUSH_TOP].baseCurrent  + 25;
+                    brush[BRUSH_TOP].pressTouchcar  = brush[BRUSH_TOP].baseCurrent  + 8;
+                    brush[BRUSH_TOP].pressL         = brush[BRUSH_TOP].baseCurrent  + 10;      //自由跟随状态下，阈值下限值正常，使吃毛深度合适
+                    brush[BRUSH_TOP].pressL_NoBW    = brush[BRUSH_TOP].baseCurrent  + 10;      //跟随不允许向上，阈值较下限值高，能及时向下贴合车身
+                    brush[BRUSH_TOP].pressH_NoFW    = brush[BRUSH_TOP].baseCurrent  + 10;      //跟随不允许向下，阈值较上限值低，不要刷太深
+                    brush[BRUSH_TOP].pressH         = brush[BRUSH_TOP].baseCurrent  + 20;      //自由跟随状态下，阈值上限值偏高，加大阈值范围，防止点头
+                    brush[BRUSH_TOP].pressProtect   = brush[BRUSH_TOP].baseCurrent  + 30;
                 }
                 else if(BRUSH_SIDE_FRONT == brushType){
                     brush[BRUSH_FORNT_LEFT].baseCurrent = currentSum[BRUSH_FORNT_LEFT] / BRUSH_CALI_READ_CNT;
@@ -1366,10 +1356,10 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
                     }
                     LOG_DEBUG("Front left base current %d, ===Record current %s", brush[BRUSH_FORNT_LEFT].baseCurrent, bufValue);
                     //左前刷控制参数
-                    brush[BRUSH_FORNT_LEFT].pressTouchcar   = brush[BRUSH_FORNT_LEFT].baseCurrent  + 5;
-                    brush[BRUSH_FORNT_LEFT].pressL_NoBW     = brush[BRUSH_FORNT_LEFT].baseCurrent  + 5;
+                    brush[BRUSH_FORNT_LEFT].pressTouchcar   = brush[BRUSH_FORNT_LEFT].baseCurrent  + 10;
+                    brush[BRUSH_FORNT_LEFT].pressL_NoBW     = brush[BRUSH_FORNT_LEFT].baseCurrent  + 10;
                     brush[BRUSH_FORNT_LEFT].pressL          = brush[BRUSH_FORNT_LEFT].baseCurrent  + 15;
-                    brush[BRUSH_FORNT_LEFT].pressH_NoFW     = brush[BRUSH_FORNT_LEFT].baseCurrent  + 10;
+                    brush[BRUSH_FORNT_LEFT].pressH_NoFW     = brush[BRUSH_FORNT_LEFT].baseCurrent  + 15;
                     brush[BRUSH_FORNT_LEFT].pressH          = brush[BRUSH_FORNT_LEFT].baseCurrent  + 35;
                     brush[BRUSH_FORNT_LEFT].pressProtect    = brush[BRUSH_FORNT_LEFT].baseCurrent  + 50;
 
@@ -1382,10 +1372,10 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
                     }
                     LOG_DEBUG("Front right base current %d, ===Record current %s", brush[BRUSH_FORNT_RIGHT].baseCurrent, bufValue);
                     //右前刷控制参数
-                    brush[BRUSH_FORNT_RIGHT].pressTouchcar  = brush[BRUSH_FORNT_RIGHT].baseCurrent + 5;
-                    brush[BRUSH_FORNT_RIGHT].pressL_NoBW    = brush[BRUSH_FORNT_RIGHT].baseCurrent + 5;
+                    brush[BRUSH_FORNT_RIGHT].pressTouchcar  = brush[BRUSH_FORNT_RIGHT].baseCurrent + 10;
+                    brush[BRUSH_FORNT_RIGHT].pressL_NoBW    = brush[BRUSH_FORNT_RIGHT].baseCurrent + 10;
                     brush[BRUSH_FORNT_RIGHT].pressL         = brush[BRUSH_FORNT_RIGHT].baseCurrent + 15;
-                    brush[BRUSH_FORNT_RIGHT].pressH_NoFW    = brush[BRUSH_FORNT_RIGHT].baseCurrent + 10;
+                    brush[BRUSH_FORNT_RIGHT].pressH_NoFW    = brush[BRUSH_FORNT_RIGHT].baseCurrent + 15;
                     brush[BRUSH_FORNT_RIGHT].pressH         = brush[BRUSH_FORNT_RIGHT].baseCurrent + 35;
                     brush[BRUSH_FORNT_RIGHT].pressProtect   = brush[BRUSH_FORNT_RIGHT].baseCurrent + 50;
                 }
@@ -1398,10 +1388,10 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
                     }
                     LOG_DEBUG("Back left base current %d, ===Record current %s", brush[BRUSH_BACK_LEFT].baseCurrent, bufValue);
                     //左后刷控制参数
-                    brush[BRUSH_BACK_LEFT].pressTouchcar    = brush[BRUSH_BACK_LEFT].baseCurrent  + 5;
-                    brush[BRUSH_BACK_LEFT].pressL_NoBW      = brush[BRUSH_BACK_LEFT].baseCurrent  + 5;
-                    brush[BRUSH_BACK_LEFT].pressL           = brush[BRUSH_BACK_LEFT].baseCurrent  + 10;
-                    brush[BRUSH_BACK_LEFT].pressH_NoFW      = brush[BRUSH_BACK_LEFT].baseCurrent  + 10;
+                    brush[BRUSH_BACK_LEFT].pressTouchcar    = brush[BRUSH_BACK_LEFT].baseCurrent  + 8;
+                    brush[BRUSH_BACK_LEFT].pressL_NoBW      = brush[BRUSH_BACK_LEFT].baseCurrent  + 8;
+                    brush[BRUSH_BACK_LEFT].pressL           = brush[BRUSH_BACK_LEFT].baseCurrent  + 15;
+                    brush[BRUSH_BACK_LEFT].pressH_NoFW      = brush[BRUSH_BACK_LEFT].baseCurrent  + 15;
                     brush[BRUSH_BACK_LEFT].pressH           = brush[BRUSH_BACK_LEFT].baseCurrent  + 35;
                     brush[BRUSH_BACK_LEFT].pressProtect     = brush[BRUSH_BACK_LEFT].baseCurrent  + 50;
 
@@ -1414,10 +1404,10 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
                     }
                     LOG_DEBUG("Back right base current %d, ===Record current %s", brush[BRUSH_BACK_RIGHT].baseCurrent, bufValue);
                     //右后刷控制参数
-                    brush[BRUSH_BACK_RIGHT].pressTouchcar   = brush[BRUSH_BACK_RIGHT].baseCurrent + 5;
-                    brush[BRUSH_BACK_RIGHT].pressL_NoBW     = brush[BRUSH_BACK_RIGHT].baseCurrent + 5;
-                    brush[BRUSH_BACK_RIGHT].pressL          = brush[BRUSH_BACK_RIGHT].baseCurrent + 10;
-                    brush[BRUSH_BACK_RIGHT].pressH_NoFW     = brush[BRUSH_BACK_RIGHT].baseCurrent + 10;
+                    brush[BRUSH_BACK_RIGHT].pressTouchcar   = brush[BRUSH_BACK_RIGHT].baseCurrent + 8;
+                    brush[BRUSH_BACK_RIGHT].pressL_NoBW     = brush[BRUSH_BACK_RIGHT].baseCurrent + 8;
+                    brush[BRUSH_BACK_RIGHT].pressL          = brush[BRUSH_BACK_RIGHT].baseCurrent + 15;
+                    brush[BRUSH_BACK_RIGHT].pressH_NoFW     = brush[BRUSH_BACK_RIGHT].baseCurrent + 15;
                     brush[BRUSH_BACK_RIGHT].pressH          = brush[BRUSH_BACK_RIGHT].baseCurrent + 35;
                     brush[BRUSH_BACK_RIGHT].pressProtect    = brush[BRUSH_BACK_RIGHT].baseCurrent + 50;
                 }
@@ -1476,15 +1466,15 @@ static int module_side_brush_both_move_to_position(Type_SideBrushPos_Enum pos)
                 LOG_UPLOAD("side brush both move to left start~~~");
                 // front_side_brush_move_pos(CRL_ONLY_LEFT, CMD_BACKWARD, PUTTER_GO_SELF_SIDE_OFFSET);
                 // front_side_brush_move_pos(CRL_ONLY_RIGHT, CMD_FORWARD, PUTTER_GO_ANOTHER_SIDE_OFFSET);
-                front_side_brush_move_time(CRL_ONLY_LEFT, CMD_BACKWARD, 3500);
-                front_side_brush_move_time(CRL_ONLY_RIGHT, CMD_FORWARD, 3500);
+                front_side_brush_move_time(CRL_ONLY_LEFT, CMD_BACKWARD, 2500);
+                front_side_brush_move_time(CRL_ONLY_RIGHT, CMD_FORWARD, 2500);
                 break;
             case SIDE_BRUSH_POS_RIGHT:
                 LOG_UPLOAD("side brush both move to right start~~~");
                 // front_side_brush_move_pos(CRL_ONLY_LEFT, CMD_FORWARD, PUTTER_GO_ANOTHER_SIDE_OFFSET);
                 // front_side_brush_move_pos(CRL_ONLY_RIGHT, CMD_BACKWARD, PUTTER_GO_SELF_SIDE_OFFSET);
-                front_side_brush_move_time(CRL_ONLY_LEFT, CMD_FORWARD, 7000);
-                front_side_brush_move_time(CRL_ONLY_RIGHT, CMD_BACKWARD, 7000);
+                front_side_brush_move_time(CRL_ONLY_LEFT, CMD_FORWARD, 5000);
+                front_side_brush_move_time(CRL_ONLY_RIGHT, CMD_BACKWARD, 5000);
                 break;
             default:
                 break;
@@ -1831,7 +1821,6 @@ int step_dev_wash(uint8_t *completeId)
                 isCarIntrude = false;
                 isPickupTruck = false;
                 set_error_state(8126, false);
-                set_error_state(8215, false);
                 recordWorkAreaConveyorEnc = 0;
                 recordLifterPosValue = 0;
             }
@@ -1858,17 +1847,17 @@ int step_dev_wash(uint8_t *completeId)
     
 
     //防闯入判定（因为顶刷校准完成后就会开始前侧刷电流校准，正常前侧刷会移动到中间洗车头的位置，所以需要在前侧刷校准前确定车辆是否闯入）
-    if(!isCarIntrude && carWash[entryCarIndex].headOffsetPos > 0 && carWash[entryCarIndex].headOffsetPos < HEAD_OFFSET_CLOSE_TOP_BRUSH
+    if(!isCarIntrude && carWash[entryCarIndex].headOffsetPos > 0 && carWash[entryCarIndex].headOffsetPos < washProcPos.startTopBrush
     && is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE)){
         isCarIntrude = true;
-        carWash[entryCarIndex].headMoveValue = HEAD_OFFSET_CLOSE_TOP_BRUSH;     //闯入后偏移闯入车辆位置，认为已经到了洗车顶位置
+        carWash[entryCarIndex].headMoveValue = washProcPos.startTopBrush;     //闯入后偏移闯入车辆位置，认为已经到了洗车顶位置
         LOG_UPLOAD("Have car intrude !");
         set_error_state(8126, true);
     }
 
     //织带松判定（织带松时输送带停止）
     //在进入车辆有车头信息时再判定，避免还没有车头信息时就触发停止，导致输送带一直不动（有线程控制输送带在没有车头信息时会一直控制动）
-    if(carWash[entryCarIndex].headPos != 0 
+    if(err_need_flag_handle()->isDetectLifterLooseEnable && carWash[entryCarIndex].headPos != 0 
     && (is_signal_filter_trigger(SIGNAL_LIFTER_LEFT_DETECH) || is_signal_filter_trigger(SIGNAL_LIFTER_RIGHT_DETECH))){
         if(!isLifterDetechProtect){
             isLifterDetechProtect = true;
@@ -1887,41 +1876,44 @@ int step_dev_wash(uint8_t *completeId)
         isLifterDetechProtect = false;
     }
 
-    //检测完成区的车辆是否有车
-    if(is_signal_filter_trigger(SIGNAL_FINISH)){
-        if(is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)
-        && !is_signal_filter_trigger(SIGNAL_EXIT)){
-            carProtectTimeStamp = aos_now_ms();
-            if(!isRearEndProtect){
-                isRearEndProtect = true;
-                isRearEndProtectStop = (is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)) ? false : true;
+    //检测完成区的车辆是否有车防止追尾（防追尾条件：完成光电和防追尾光电触发、出口光电不触发）
+    //前车流程在风干步骤及之后时，如果满足防追尾条件认为是同一辆车中间漏光了，不理会
+    //只有在前车流程没到风干步骤前，满足防追尾条件，认为是两辆车，允许触发防追尾（在完成区洗完的车会清除该车的所有信息，不算前车）
+    if(carWash[headWashCarId].headProc < PROC_START_DYRING){
+        if(is_signal_filter_trigger(SIGNAL_FINISH)){
+            if(is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT) && !is_signal_filter_trigger(SIGNAL_EXIT)){
+                carProtectTimeStamp = aos_now_ms();
+                if(!isRearEndProtect){
+                    isRearEndProtect = true;
+                    isRearEndProtectStop = (is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)) ? false : true;
+                }
+                if(!is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID))  conveyor_move(CRL_SECTION_2, CMD_STILL);
+                if(voiceCnt < 5 && get_diff_ms(voiceTimeStamp) > 8000){
+                    voiceCnt++;
+                    voiceTimeStamp = aos_now_ms();
+                    voice_play_set(AG_VOICE_POS_EXIT, AG_VOICE_EXIT_CONGESTION);
+                    LOG_UPLOAD("Car in complete area, wait...");
+                }
             }
-            if(!is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID))  conveyor_move(CRL_SECTION_2, CMD_STILL);
-            if(voiceCnt < 5 && get_diff_ms(voiceTimeStamp) > 8000){
-                voiceCnt++;
-                voiceTimeStamp = aos_now_ms();
-                voice_play_set(AG_VOICE_POS_EXIT, AG_VOICE_EXIT_CONGESTION);
-                LOG_UPLOAD("Car in complete area, wait...");
+            else{
+                isRearEndProtect = false;
             }
         }
         else{
-            isRearEndProtect = false;
-        }
-    }
-    else{
-        if(isRearEndProtect){
-            LOG_UPLOAD("Car move out complete area, continue run");
-            if(isRearEndProtectStop){
-                conveyor_move(CRL_SECTION_2, CMD_FORWARD);
+            if(isRearEndProtect){
+                LOG_UPLOAD("Car move out complete area, continue run");
+                if(isRearEndProtectStop){
+                    conveyor_move(CRL_SECTION_2, CMD_FORWARD);
+                }
             }
+            isRearEndProtect = false;
+            voiceCnt = 0;
         }
-        isRearEndProtect = false;
-        voiceCnt = 0;
     }
 
     int32_t lifterPos = xp_osal_get_dev_pos(LIFTER_MATCH_ID);
     //车身不同位置顶刷跟随方式变更
-    if(carWash[entryCarIndex].headOffsetPos > CAR_MIN_LENGTH / 2 + HEAD_OFFSET_CLOSE_TOP_BRUSH){
+    if(carWash[entryCarIndex].headOffsetPos > CAR_MIN_LENGTH / 2 + washProcPos.startTopBrush){
         if(BRUSH_FOLLOW_NO_FORWARD == brush[BRUSH_TOP].runMode){    //大概越过车顶后允许顶刷自由跟随
             brush[BRUSH_TOP].runMode = BRUSH_FREE_FOLLOW;
             LOG_UPLOAD("Top brush change follow mode free");
@@ -1934,34 +1926,34 @@ int step_dev_wash(uint8_t *completeId)
         }
     }
 
-    //皮卡检测
-    
-    if(!isPickupTruck && lifterPos > carWash[entryCarIndex].topLifter){
-        if(0 == recordWorkAreaConveyorEnc || 0 == recordLifterPosValue){
-            recordWorkAreaConveyorEnc = workAreaConveyorEnc;
-            recordLifterPosValue = lifterPos;
-        }
-        else{
-        // if(topBrushCurrentTooLowCnt > 3){
-            if(lifterPos - recordLifterPosValue > 30
-            && workAreaConveyorEnc - recordWorkAreaConveyorEnc < 100){
-                LOG_UPLOAD("Is pickup, finish top brush !");
-                isPickupTruck = true;
-                set_error_state(8215, true);
-                brush[BRUSH_TOP].runMode = BRUSH_MANUAL;
-                brush[BRUSH_TOP].isJogMove = false;
-                top_brush_rotation(CMD_STILL);
-                lifter_move(CMD_BACKWARD, true);
-                water_system_control(WATER_TOP, false);
-            }
-        }
-        if(workAreaConveyorEnc - recordWorkAreaConveyorEnc >= 100){
-            recordWorkAreaConveyorEnc = workAreaConveyorEnc;
-            recordLifterPosValue = lifterPos;
-            LOG_DEBUG("///////recordLifterPos %d, recordWorkAreaConveyorEnc %d", recordLifterPosValue, recordWorkAreaConveyorEnc);
-        }
-        LOG_DEBUG("====lifterPos %d, workAreaConveyorEnc %d", lifterPos, workAreaConveyorEnc);
-    }
+    //皮卡检测（到最高点向下移动时开始检测下降斜率）
+    // if(!isPickupTruck && lifterPos > carWash[entryCarIndex].topLifter){
+    //     if(0 == recordWorkAreaConveyorEnc || 0 == recordLifterPosValue){    //首次进入记录初始值
+    //         recordWorkAreaConveyorEnc = workAreaConveyorEnc;
+    //         recordLifterPosValue = lifterPos;
+    //     }
+    //     else{
+    //         //下降斜率超过 PICKUP_SLOPE_THRESHOLD_VALUE / SLPOE_JUDGE_FREQ_VALUE 不再进行顶刷刷洗
+    //         if(lifterPos - recordLifterPosValue > PICKUP_SLOPE_THRESHOLD_VALUE
+    //         && workAreaConveyorEnc - recordWorkAreaConveyorEnc < SLPOE_JUDGE_FREQ_VALUE){
+    //             LOG_UPLOAD("Is pickup, finish top brush !");
+    //             isPickupTruck = true;
+    //             set_error_state(8215, true);
+    //             brush[BRUSH_TOP].runMode = BRUSH_MANUAL;
+    //             brush[BRUSH_TOP].isJogMove = false;
+    //             top_brush_rotation(CMD_STILL);
+    //             lifter_move(CMD_BACKWARD, true);
+    //             water_system_control(WATER_TOP, false);
+    //         }
+            
+    //         if(workAreaConveyorEnc - recordWorkAreaConveyorEnc > SLPOE_JUDGE_FREQ_VALUE){
+    //             LOG_DEBUG("Slope %d / %d", lifterPos - recordLifterPosValue, SLPOE_JUDGE_FREQ_VALUE);
+    //             recordWorkAreaConveyorEnc = workAreaConveyorEnc;
+    //             recordLifterPosValue = lifterPos;
+    //         }
+    //         LOG_DEBUG("====lifterPos %d, workAreaConveyorEnc %d", lifterPos, workAreaConveyorEnc);
+    //     }
+    // }
 
     //轮询判定工作区内各车辆的位置，执行相应的机构（编号0的Id不参与洗车）
     for (uint8_t i = 1; i < SUPPORT_WASH_NUM_MAX; i++)
@@ -1982,15 +1974,15 @@ int step_dev_wash(uint8_t *completeId)
             }
 
             //根据当前车头进入入口光电的距离判定当前处于什么流程（洗车车顶之后的流程不允许按位置距离跳跃）
-            if(carWash[i].headProc == PROC_START_WAXWATER && carWash[i].headOffsetPos > HEAD_OFFSET_CLOSE_DRYER)                carWash[i].headProc = PROC_START_DYRING;
-            else if(carWash[i].headProc == PROC_START_BACK_BRUSH && carWash[i].headOffsetPos > HEAD_OFFSET_CLOSE_WAXWATER)      carWash[i].headProc = PROC_START_WAXWATER;
-            else if(carWash[i].headProc == PROC_START_FRONT_BRUSH && carWash[i].headOffsetPos > HEAD_OFFSET_CLOSE_BACK_BRUSH)   carWash[i].headProc = PROC_START_BACK_BRUSH;
+            if(carWash[i].headProc == PROC_START_WAXWATER && carWash[i].headOffsetPos > washProcPos.startDrying)                        carWash[i].headProc = PROC_START_DYRING;
+            else if(carWash[i].headProc == PROC_START_BACK_BRUSH && carWash[i].headOffsetPos > washProcPos.startWaxwater)               carWash[i].headProc = PROC_START_WAXWATER;
+            else if(carWash[i].headProc == PROC_START_FRONT_BRUSH && carWash[i].headOffsetPos > washProcPos.startBackBrush)             carWash[i].headProc = PROC_START_BACK_BRUSH;
             // 前刷启动的流程用毛刷压力值去判定，不用脉冲值（车在输送带上可能打滑）
-            // else if(carWash[i].headProc < PROC_START_FRONT_BRUSH && carWash[i].headOffsetPos > HEAD_OFFSET_CLOSE_FRONT_BRUSH)carWash[i].headProc = PROC_START_FRONT_BRUSH;
-            else if(carWash[i].headProc < PROC_START_TOP_BRUSH && carWash[i].headOffsetPos > HEAD_OFFSET_CLOSE_TOP_BRUSH)   carWash[i].headProc = PROC_START_TOP_BRUSH;
-            else if(carWash[i].headProc < PROC_START_SHAMPOO && carWash[i].headOffsetPos > HEAD_OFFSET_CLOSE_SHAMPOO)       carWash[i].headProc = PROC_START_SHAMPOO;
-            else if(carWash[i].headProc < PROC_START_SKIRT_BRUSH_OUT && carWash[i].headOffsetPos > HEAD_OFFSET_CLOSE_SKIRT_BRUSH_OUT)  carWash[i].headProc = PROC_START_SKIRT_BRUSH_OUT;
-            else if(carWash[i].headProc < PROC_START_SKIRT_BRUSH_ROTATION && carWash[i].headOffsetPos > HEAD_OFFSET_CLOSE_SKIRT_BRUSH_ROTATION)  carWash[i].headProc = PROC_START_SKIRT_BRUSH_ROTATION;
+            // else if(carWash[i].headProc < PROC_START_FRONT_BRUSH && carWash[i].headOffsetPos > washProcPos.startFrontBrush)carWash[i].headProc = PROC_START_FRONT_BRUSH;
+            else if(carWash[i].headProc < PROC_START_TOP_BRUSH && carWash[i].headOffsetPos > washProcPos.startTopBrush)                 carWash[i].headProc = PROC_START_TOP_BRUSH;
+            else if(carWash[i].headProc < PROC_START_SHAMPOO && carWash[i].headOffsetPos > washProcPos.startShampoo)                    carWash[i].headProc = PROC_START_SHAMPOO;
+            else if(carWash[i].headProc < PROC_START_SKIRT_BRUSH_OUT && carWash[i].headOffsetPos > washProcPos.startSkirtBrush + 20)    carWash[i].headProc = PROC_START_SKIRT_BRUSH_OUT;
+            else if(carWash[i].headProc < PROC_START_SKIRT_BRUSH_ROTATION && carWash[i].headOffsetPos > washProcPos.startSkirtBrush)    carWash[i].headProc = PROC_START_SKIRT_BRUSH_ROTATION;
 
             //顶刷电流校准及触碰到车头判定
             if(carWash[i].headProc >= PROC_START_SKIRT_BRUSH_ROTATION && carWash[i].headProc <= PROC_START_TOP_BRUSH){
@@ -2007,11 +1999,12 @@ int step_dev_wash(uint8_t *completeId)
                         water_system_control(WATER_SHAMPOO, true);
                         water_system_control(WATER_SHAMPOO_PIKN, true);
                         water_system_control(WATER_SHAMPOO_GREEN, true);
+                        water_system_control(WATER_BASE_PLATE, true);
                         carWash[i].headProc = PROC_START_TOP_BRUSH;
                         /* 顶刷触碰到轿车位置非车头位置，这里不刷新 */
                         // //刷新车头位置（有可能打滑，导致后面比如吹风在车没到的时候就开始吹了）
-                        // if(carWash[i].headOffsetPos > HEAD_OFFSET_CLOSE_TOP_BRUSH){
-                        //     carWash[i].headPos += (carWash[i].headOffsetPos - HEAD_OFFSET_CLOSE_TOP_BRUSH);
+                        // if(carWash[i].headOffsetPos > washProcPos.startTopBrush){
+                        //     carWash[i].headPos += (carWash[i].headOffsetPos - washProcPos.startTopBrush);
                         // }
                         // LOG_UPLOAD("Car Index %d change proc to %d, head offset pos %d, refresh head pos to %d", 
                         // i, carWash[i].headProc, carWash[i].headOffsetPos, carWash[i].headPos);
@@ -2045,14 +2038,14 @@ int step_dev_wash(uint8_t *completeId)
                     stepSta.isModuleDriverExecuted = false;
                 }
                 if(brush[BRUSH_FORNT_LEFT].isCalibrated && brush[BRUSH_FORNT_RIGHT].isCalibrated){
-                    if((carWash[i].headOffsetPos > HEAD_OFFSET_CLOSE_FRONT_BRUSH 
+                    if((carWash[i].headOffsetPos > washProcPos.startFrontBrush 
                     && (brush[BRUSH_FORNT_LEFT].current > brush[BRUSH_FORNT_LEFT].pressTouchcar || brush[BRUSH_FORNT_RIGHT].current > brush[BRUSH_FORNT_RIGHT].pressTouchcar))
                     || brush[BRUSH_FORNT_LEFT].current > brush[BRUSH_FORNT_LEFT].pressProtect || brush[BRUSH_FORNT_RIGHT].current > brush[BRUSH_FORNT_RIGHT].pressProtect){
                         carWash[i].headProc = PROC_START_FRONT_BRUSH;
                         LOG_DEBUG("Front brush touch car, current left %d, right %d", brush[BRUSH_FORNT_LEFT].current, brush[BRUSH_FORNT_RIGHT].current);
                         //刷新车头位置（有可能打滑，导致后面比如后侧刷在车没到的时候就开始合了。提前到的不管，后面的机构晚一点动作没什么风险）
-                        if(carWash[i].headOffsetPos > HEAD_OFFSET_CLOSE_FRONT_BRUSH){
-                            carWash[i].headPos += (carWash[i].headOffsetPos - HEAD_OFFSET_CLOSE_FRONT_BRUSH + 25);//25为毛刷深度补偿值
+                        if(carWash[i].headOffsetPos > washProcPos.startFrontBrush){
+                            carWash[i].headPos += (carWash[i].headOffsetPos - washProcPos.startFrontBrush + 25);//25为毛刷深度补偿值
                         }
                         LOG_UPLOAD("Car Index %d change proc to %d, head offset pos %d, reflash head pos to %d", 
                         i, carWash[i].headProc, carWash[i].headOffsetPos, carWash[i].headPos);
@@ -2115,7 +2108,7 @@ int step_dev_wash(uint8_t *completeId)
                 brush[BRUSH_FORNT_RIGHT].isJogMove = true;
             }
             //后侧刷越过车头后自由跟随
-            if(carWash[i].isBackBrushInHeadArea && carWash[i].headOffsetPos > HEAD_OFFSET_CLOSE_WAXWATER){
+            if(carWash[i].isBackBrushInHeadArea && carWash[i].headOffsetPos > washProcPos.startWaxwater){
                 carWash[i].isBackBrushInHeadArea  = false;
                 brush[BRUSH_BACK_LEFT].runMode    = BRUSH_FREE_FOLLOW;
                 brush[BRUSH_BACK_RIGHT].runMode   = BRUSH_FREE_FOLLOW;
@@ -2151,6 +2144,7 @@ int step_dev_wash(uint8_t *completeId)
                     water_system_control(WATER_SHAMPOO, true);
                     water_system_control(WATER_SHAMPOO_PIKN, true);
                     water_system_control(WATER_SHAMPOO_GREEN, true);
+                    water_system_control(WATER_BASE_PLATE, true);
                 }
                 break;
             case PROC_START_TOP_BRUSH:              //开始进程洗车顶
@@ -2169,6 +2163,7 @@ int step_dev_wash(uint8_t *completeId)
                         water_system_control(WATER_SHAMPOO, true);
                         water_system_control(WATER_SHAMPOO_PIKN, true);
                         water_system_control(WATER_SHAMPOO_GREEN, true);
+                        water_system_control(WATER_BASE_PLATE, true);
                     }
                 }
                 break;
@@ -2188,6 +2183,7 @@ int step_dev_wash(uint8_t *completeId)
                         water_system_control(WATER_SHAMPOO, false);
                         water_system_control(WATER_SHAMPOO_PIKN, false);
                         water_system_control(WATER_SHAMPOO_GREEN, false);
+                        water_system_control(WATER_BASE_PLATE, false);
                         brush[BRUSH_TOP].runMode = BRUSH_MANUAL;    //洗车头时，停止顶刷跟随，上升一定距离，避免顶刷长时间刷车身
                         lifter_move_time(CMD_BACKWARD, 1500);
                     }
@@ -2216,7 +2212,7 @@ int step_dev_wash(uint8_t *completeId)
                             }
                             else if(SIDE_BRUSH_POS_RIGHT == sideBrushWashPos){
                                 LOG_UPLOAD("Front side brush wash car head finish");
-                                front_side_brush_move_time(CRL_ONLY_LEFT, CMD_BACKWARD, 7000);
+                                front_side_brush_move_time(CRL_ONLY_LEFT, CMD_BACKWARD, 5000);
                                 //刷洗完车头，侧刷合到一定位置，准备刷洗车头弧度处。左右移动有误差，进行一定补偿
                                 // front_side_brush_move_pos(CRL_ONLY_LEFT, CMD_BACKWARD, 30);
                                 // front_side_brush_move_pos(CRL_ONLY_RIGHT, CMD_FORWARD, 30 - 5);
@@ -2225,6 +2221,7 @@ int step_dev_wash(uint8_t *completeId)
                                 water_system_control(WATER_SHAMPOO, true);
                                 water_system_control(WATER_SHAMPOO_PIKN, true);
                                 water_system_control(WATER_SHAMPOO_GREEN, true);
+                                water_system_control(WATER_BASE_PLATE, true);
                             }
                             ret = NOR_CONTINUE;
                         }
@@ -2282,30 +2279,30 @@ int step_dev_wash(uint8_t *completeId)
                     LOG_UPLOAD("Car Index %d relative tail entry pos %d", i, carWash[i].tailOffsetPos);
                 }
                 //根据当前车尾离开入口光电的距离判定当前处于什么流程（不允许按位置距离位置跳跃步骤）
-                if(carWash[i].tailProc == PROC_FINISH_WAXWAT && carWash[i].tailOffsetPos > TAIL_OFFSET_LEAVE_DRYER && !is_signal_filter_trigger(SIGNAL_EXIT)) carWash[i].tailProc = PROC_FINISH_DYRING;
-                else if(carWash[i].tailProc == PROC_FINISH_BACK_BRUSH && carWash[i].tailOffsetPos > TAIL_OFFSET_LEAVE_BACK_WAXWATER)carWash[i].tailProc = PROC_FINISH_WAXWAT;
-                else if(carWash[i].tailProc == PROC_FINISH_FRONT_BRUSH && carWash[i].tailOffsetPos > TAIL_OFFSET_LEAVE_BACK_BRUSH)  carWash[i].tailProc = PROC_FINISH_BACK_BRUSH;
-                else if(carWash[i].tailProc == PROC_FINISH_TOP_BRUSH && carWash[i].tailOffsetPos > TAIL_OFFSET_LEAVE_FRONT_BRUSH)   carWash[i].tailProc = PROC_FINISH_FRONT_BRUSH;
-                else if(carWash[i].tailProc == PROC_FINISH_SHAMPOO && carWash[i].tailOffsetPos > TAIL_OFFSET_LEAVE_TOP_BRUSH)       carWash[i].tailProc = PROC_FINISH_TOP_BRUSH;
-                else if(carWash[i].tailProc == PROC_FINISH_SKIRT_BRUSH && carWash[i].tailOffsetPos > TAIL_OFFSET_LEAVE_SHAMPOO)     carWash[i].tailProc = PROC_FINISH_SHAMPOO;
-                else if(carWash[i].tailProc == PROC_FINISH_HIGH_PUMP && carWash[i].tailOffsetPos > TAIL_OFFSET_LEAVE_SKIRT_BRUSH)   carWash[i].tailProc = PROC_FINISH_SKIRT_BRUSH;
-                else if(carWash[i].tailProc < PROC_FINISH_HIGH_PUMP && carWash[i].tailOffsetPos > TAIL_OFFSET_LEAVE_HIGH_PUMP)      carWash[i].tailProc = PROC_FINISH_HIGH_PUMP;
+                if(carWash[i].tailProc == PROC_FINISH_WAXWAT && carWash[i].tailOffsetPos > washProcPos.endDrying && !is_signal_filter_trigger(SIGNAL_EXIT)) carWash[i].tailProc = PROC_FINISH_DYRING;
+                else if(carWash[i].tailProc == PROC_FINISH_BACK_BRUSH && carWash[i].tailOffsetPos > washProcPos.endWaxwater)    carWash[i].tailProc = PROC_FINISH_WAXWAT;
+                else if(carWash[i].tailProc == PROC_FINISH_FRONT_BRUSH && carWash[i].tailOffsetPos > washProcPos.endBackBrush)  carWash[i].tailProc = PROC_FINISH_BACK_BRUSH;
+                else if(carWash[i].tailProc == PROC_FINISH_TOP_BRUSH && carWash[i].tailOffsetPos > washProcPos.endFrontBrush)   carWash[i].tailProc = PROC_FINISH_FRONT_BRUSH;
+                else if(carWash[i].tailProc == PROC_FINISH_SHAMPOO && carWash[i].tailOffsetPos > washProcPos.endTopBrush)       carWash[i].tailProc = PROC_FINISH_TOP_BRUSH;
+                else if(carWash[i].tailProc == PROC_FINISH_SKIRT_BRUSH && carWash[i].tailOffsetPos > washProcPos.endShampoo)    carWash[i].tailProc = PROC_FINISH_SHAMPOO;
+                else if(carWash[i].tailProc == PROC_FINISH_HIGH_PUMP && carWash[i].tailOffsetPos > washProcPos.endSkirtBrush)   carWash[i].tailProc = PROC_FINISH_SKIRT_BRUSH;
+                else if(carWash[i].tailProc < PROC_FINISH_HIGH_PUMP && carWash[i].tailOffsetPos > washProcPos.endHighPump)      carWash[i].tailProc = PROC_FINISH_HIGH_PUMP;
 
                 //顶刷在车尾提前取消点动
-                if(brush[BRUSH_TOP].isJogMove && carWash[i].tailOffsetPos > TAIL_OFFSET_LEAVE_TOP_BRUSH - 50){
+                if(brush[BRUSH_TOP].isJogMove && carWash[i].tailOffsetPos > washProcPos.endTopBrush - 50){
                     brush[BRUSH_TOP].isJogMove = false;
                 }
                 //侧刷在车尾处提前取消点动
-                if((brush[BRUSH_FORNT_LEFT].isJogMove || brush[BRUSH_FORNT_RIGHT].isJogMove) && carWash[i].tailOffsetPos > TAIL_OFFSET_LEAVE_FRONT_BRUSH - 50){
+                if((brush[BRUSH_FORNT_LEFT].isJogMove || brush[BRUSH_FORNT_RIGHT].isJogMove) && carWash[i].tailOffsetPos > washProcPos.endFrontBrush - 50){
                     brush[BRUSH_FORNT_LEFT].isJogMove  = false;
                     brush[BRUSH_FORNT_RIGHT].isJogMove = false;
                 }
-                if((brush[BRUSH_BACK_LEFT].isJogMove || brush[BRUSH_BACK_RIGHT].isJogMove) && carWash[i].tailOffsetPos > TAIL_OFFSET_LEAVE_BACK_BRUSH - 60){
+                if((brush[BRUSH_BACK_LEFT].isJogMove || brush[BRUSH_BACK_RIGHT].isJogMove) && carWash[i].tailOffsetPos > washProcPos.endBackBrush - 60){
                     brush[BRUSH_BACK_LEFT].isJogMove  = false;
                     brush[BRUSH_BACK_RIGHT].isJogMove = false;
                 }
                 if((brush[BRUSH_BACK_LEFT].runMode != BRUSH_MANUAL || brush[BRUSH_BACK_RIGHT].runMode != BRUSH_MANUAL) 
-                    && carWash[i].tailOffsetPos > TAIL_OFFSET_LEAVE_BACK_BRUSH - 30){
+                    && carWash[i].tailOffsetPos > washProcPos.endBackBrush){
                     brush[BRUSH_BACK_LEFT].runMode  = BRUSH_MANUAL;
                     brush[BRUSH_BACK_RIGHT].runMode = BRUSH_MANUAL;
                 }
@@ -2347,6 +2344,7 @@ int step_dev_wash(uint8_t *completeId)
                         water_system_control(WATER_SHAMPOO, false);
                         water_system_control(WATER_SHAMPOO_PIKN, false);
                         water_system_control(WATER_SHAMPOO_GREEN, false);
+                        water_system_control(WATER_BASE_PLATE, false);
                     }
                     break;
                 case PROC_FINISH_TOP_BRUSH:                     //结束顶部刷洗
@@ -2358,32 +2356,32 @@ int step_dev_wash(uint8_t *completeId)
                         water_system_control(WATER_TOP, false);
                         //从前往后查找前车窗位置（从车头找到车中间位置）
                         carWash[i].headWindowsOffsetHead = 0;
-                        for (uint8_t j = (HEAD_OFFSET_CLOSE_TOP_BRUSH / CAR_POS_RECORD_INFO_ACCURACY);
-                            j < (((carWash[i].tailPos - carWash[i].headPos) / 2 + HEAD_OFFSET_CLOSE_TOP_BRUSH) / CAR_POS_RECORD_INFO_ACCURACY); j++)
+                        for (uint8_t j = (washProcPos.startTopBrush / CAR_POS_RECORD_INFO_ACCURACY);
+                            j < (((carWash[i].tailPos - carWash[i].headPos) / 2 + washProcPos.startTopBrush) / CAR_POS_RECORD_INFO_ACCURACY); j++)
                         {
                             if(recordLifterPos[j] != 0 && (recordLifterPos[j] < carWash[i].topLifter + CAR_WINDOWS_TO_TOP_OFFSET)){
-                                if(recordAreaPos[j] < HEAD_OFFSET_CLOSE_TOP_BRUSH){
-                                    LOG_UPLOAD("Error! head windows pos [%d]=%d, before head pos %d", j, recordAreaPos[j], HEAD_OFFSET_CLOSE_TOP_BRUSH);
+                                if(recordAreaPos[j] < washProcPos.startTopBrush){
+                                    LOG_UPLOAD("Error! head windows pos [%d]=%d, before head pos %d", j, recordAreaPos[j], washProcPos.startTopBrush);
                                     // return -3;
                                 }
                                 else{
-                                    carWash[i].headWindowsOffsetHead = recordAreaPos[j] - HEAD_OFFSET_CLOSE_TOP_BRUSH;
+                                    carWash[i].headWindowsOffsetHead = recordAreaPos[j] - washProcPos.startTopBrush;
                                 }
                                 break;
                             }
                         }
                         //从后往前查找后车窗位置（从车尾找到车中间位置）
                         carWash[i].tailWindowsOffsetHead = 0;
-                        for (uint8_t j = ((carWash[i].tailPos + HEAD_OFFSET_CLOSE_TOP_BRUSH) / CAR_POS_RECORD_INFO_ACCURACY); \
-                            j > (((carWash[i].tailPos - carWash[i].headPos) / 2 + HEAD_OFFSET_CLOSE_TOP_BRUSH) / CAR_POS_RECORD_INFO_ACCURACY); j--)
+                        for (uint8_t j = ((carWash[i].tailPos + washProcPos.startTopBrush) / CAR_POS_RECORD_INFO_ACCURACY); \
+                            j > (((carWash[i].tailPos - carWash[i].headPos) / 2 + washProcPos.startTopBrush) / CAR_POS_RECORD_INFO_ACCURACY); j--)
                         {
                             if(recordLifterPos[j] != 0 && (recordLifterPos[j] < carWash[i].topLifter + CAR_WINDOWS_TO_TOP_OFFSET)){
-                                if(recordAreaPos[j] < HEAD_OFFSET_CLOSE_TOP_BRUSH){
-                                    LOG_UPLOAD("Error! tail windows pos [%d]=%d, before head pos %d", j, recordAreaPos[j], HEAD_OFFSET_CLOSE_TOP_BRUSH);
+                                if(recordAreaPos[j] < washProcPos.startTopBrush){
+                                    LOG_UPLOAD("Error! tail windows pos [%d]=%d, before head pos %d", j, recordAreaPos[j], washProcPos.startTopBrush);
                                     // return -4;
                                 }
                                 else{
-                                    carWash[i].tailWindowsOffsetHead = recordAreaPos[j] - HEAD_OFFSET_CLOSE_TOP_BRUSH;
+                                    carWash[i].tailWindowsOffsetHead = recordAreaPos[j] - washProcPos.startTopBrush;
                                 }
                                 break;
                             }
@@ -2653,8 +2651,8 @@ void side_brush_follow_thread(void *arg)
             for (uint8_t i = 0; i < SUPPORT_WASH_NUM_MAX; i++)
             {
                 if(carWash[i].headWindowsOffsetHead != 0
-                && carWash[i].headOffsetPos > HEAD_OFFSET_CLOSE_FRONT_BRUSH + carWash[i].headWindowsOffsetHead + 90
-                && carWash[i].headOffsetPos < HEAD_OFFSET_CLOSE_FRONT_BRUSH + carWash[i].headWindowsOffsetHead + 170){
+                && carWash[i].headOffsetPos > washProcPos.startFrontBrush + carWash[i].headWindowsOffsetHead + 90
+                && carWash[i].headOffsetPos < washProcPos.startFrontBrush + carWash[i].headWindowsOffsetHead + 170){
                     isRearviewMirrors = true;
                     break;
                 }
@@ -2736,7 +2734,6 @@ void side_brush_follow_thread(void *arg)
 
                 if(CMD_BACKWARD == needCmd[BRUSH_TOP] && filterCnt[BRUSH_TOP] > (300/BRUSH_FOLLOW_THREAD_FREQ - 3)){
                     isTopBrushFirstBackward = true;
-                    topBrushCurrentTooLowCnt = 0;
                     if(brush[BRUSH_TOP].current > brush[BRUSH_TOP].pressProtect){
                         brush[BRUSH_TOP].isPressProtectMove = true;
                         recordBrushCmdSta[BRUSH_TOP] = CMD_BACKWARD;
@@ -2754,7 +2751,7 @@ void side_brush_follow_thread(void *arg)
                         brush[BRUSH_TOP].isJogMove ? lifter_move_time(CMD_BACKWARD, (BRUSH_FOLLOW_NO_FORWARD == brush[BRUSH_TOP].runMode) ? 500 : 300) \
                         : lifter_move_time(CMD_BACKWARD, 800);
                         // LOG_INFO("Top current %d is high, backward", brush[BRUSH_TOP].current);
-                        LOG_INFO("Top current %d is high, base %d, PH %d, PL %d, backward", \
+                        LOG_INFO("Top current %d is high, base %d, PL %d, PH %d, backward", \
                         brush[BRUSH_TOP].current, brush[BRUSH_TOP].baseCurrent, brush[BRUSH_TOP].pressL, brush[BRUSH_TOP].pressH);
                     }
                 }
@@ -2767,9 +2764,8 @@ void side_brush_follow_thread(void *arg)
                         filterCnt[BRUSH_TOP] = 0;
                         brush[BRUSH_TOP].isJogMove ? \
                         lifter_move_time(CMD_FORWARD, (brush[BRUSH_TOP].isPressProtectMove) ? 200 : 300) : lifter_move(CMD_FORWARD, true);
-                        LOG_INFO("Top posture current %d is too low, forward", brush[BRUSH_TOP].current);
+                        LOG_INFO("Top current %d is too low, forward", brush[BRUSH_TOP].current);
                         brush[BRUSH_TOP].isPressProtectMove = false;
-                        topBrushCurrentTooLowCnt++;
                     }
                     else if(get_diff_ms(brushMoveTimestamp[BRUSH_TOP]) > 1000 && filterCnt[BRUSH_TOP] > DECISION_FORWARD_CMD_CNT){
                         brush[BRUSH_TOP].isPressProtectMove = false;
@@ -2777,13 +2773,11 @@ void side_brush_follow_thread(void *arg)
                         brushMoveTimestamp[BRUSH_TOP] = aos_now_ms();
                         filterCnt[BRUSH_TOP] = 0;
                         brush[BRUSH_TOP].isJogMove ? lifter_move_time(CMD_FORWARD, (BRUSH_FOLLOW_NO_BACKWARD == brush[BRUSH_TOP].runMode) ? 500 : 300) : lifter_move(CMD_FORWARD, true);
-                        LOG_INFO("Top posture current %d is low, forward", brush[BRUSH_TOP].current);
-                        // if(is_signal_filter_trigger(SIGNAL_PICKUP_TRUCK))  topBrushCurrentTooLowCnt++;
+                        LOG_INFO("Top current %d is low, forward", brush[BRUSH_TOP].current);
                     }
                 }
                 else if(CMD_STILL == needCmd[BRUSH_TOP] && filterCnt[BRUSH_TOP] >= brushCurrentFitJudgeCnt
                 && recordBrushCmdSta[BRUSH_TOP] != CMD_STILL){
-                    topBrushCurrentTooLowCnt = 0;
                     recordBrushCmdSta[BRUSH_TOP] = CMD_STILL;
                     filterCnt[BRUSH_TOP] = 0;
                     lifter_move(CMD_STILL, true);
@@ -2859,7 +2853,7 @@ void side_brush_follow_thread(void *arg)
                             default:
                                 break;
                             }
-                            LOG_INFO("%s current %d is high, backward, PH %d, PL %d", xp_get_brush_str(i), brush[i].current, brushCurrent_H, brushCurrent_L);
+                            LOG_INFO("%s current %d is high, backward, PL %d, PH %d", xp_get_brush_str(i), brush[i].current, brushCurrent_L, brushCurrent_H);
                         }
                     }
                     else if(CMD_FORWARD == needCmd[i] && filterCnt[i] > DECISION_FORWARD_CMD_CNT
@@ -3403,6 +3397,15 @@ void set_new_order_car_id(uint8_t newOrderId)
 }
 
 /**
+ * @brief       获取洗车流程位置值变量指针
+ * @return      Type_ModelSts_Def*  
+ */
+Type_CarProcPosInfo_Def *get_washProcPos_Obj(void)
+{
+    return &washProcPos;
+}
+
+/**
  * @brief       获取毛刷电流
  * @param[in]	type                
  * @return      int                 
@@ -3517,7 +3520,6 @@ void wash_crl_variable_init(void)
     {
         memset(&brush[i], 0, sizeof(Type_BrushInfo_Def));
         brush[i].pressWarning = (BRUSH_TOP == i) ? TOP_BRUSH_WARNING_CUR : SIDE_BRUSH_WARNING_CUR;
-        brush[i].init = 1;
     }
 }
 
@@ -3532,8 +3534,10 @@ void app_crl_dev_set(Type_AppCrlObject_Enum obj, int cmd)
     {
     case APP_CRL_GATE_1_OPEN:       gate_change_state(CRL_SECTION_1, cmd > 0 ? CMD_BACKWARD : CMD_STILL); break;
     case APP_CRL_GATE_1_CLOSE:      gate_change_state(CRL_SECTION_1, cmd > 0 ? CMD_FORWARD : CMD_STILL); break;
-    case APP_CRL_GATE_2_OPEN:       osal_dev_io_state_change(BOARD4_OUTPUT_WARNING_BOARD, IO_DISABLE); break;
-    case APP_CRL_GATE_2_CLOSE:      osal_dev_io_state_change(BOARD4_OUTPUT_WARNING_BOARD, IO_ENABLE);; break;
+    case APP_CRL_GATE_2_OPEN:       gate_change_state(CRL_SECTION_2, cmd > 0 ? CMD_BACKWARD : CMD_STILL); break;
+    case APP_CRL_GATE_2_CLOSE:      gate_change_state(CRL_SECTION_2, cmd > 0 ? CMD_FORWARD : CMD_STILL);  break;
+    case APP_CRL_GATE_3_OPEN:       gate_change_state(CRL_SECTION_3, cmd > 0 ? CMD_BACKWARD : CMD_STILL); break;
+    case APP_CRL_GATE_3_CLOSE:      gate_change_state(CRL_SECTION_3, cmd > 0 ? CMD_FORWARD : CMD_STILL); break;
     case APP_CRL_CONVEYOR_1:        conveyor_move(CRL_SECTION_1, cmd); break;
     case APP_CRL_CONVEYOR_2:        conveyor_move(CRL_SECTION_2, cmd); break;
     case APP_CRL_CONVEYOR_3:        conveyor_move(CRL_SECTION_3, cmd); break;
@@ -3786,6 +3790,7 @@ int xp_module_debug(char *type, char *fun, char *param)
             Type_CrlType_Enum num = atoi(param_1);
             if(1 == num)        num = CRL_SECTION_1;
             else if(2 == num)   num = CRL_SECTION_2;
+            else if(3 == num)   num = CRL_SECTION_3;
             else num = 0;
             gate_change_state(num, atoi(param_2));
         }

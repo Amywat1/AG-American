@@ -11,142 +11,147 @@
 #include "ag_err_state.h"
 #include "ag_osal.h"
 
-
 #define NDEFINE_TIME                    (0)         //未定义时间
 #define VFD_NUM                         (9)         //变频器数量
 #define VFD_DETECT_FREQ_TIME            (1000)      //变频器的循环检测时间(ms)
 #define ERR_CHECK_SLEEP_TIME            (10)        //错误检测的等待时间(ms)
 #define FREQ_ERR_T(T)                   T*ERR_CHECK_SLEEP_TIME/VFD_DETECT_FREQ_TIME             //设置变频器报警时间
 #define ERR_TABLE_NUMBERS               (sizeof(ErrInfo_Table) / sizeof(ErrInfo_Table[0]))      //报警个数
-#define EMC_MATCH_TABLE_ID              (59)        //急停报警对应的错误查询表序号
-#define ERR_CANT_BACK_HOME              (true == ErrInfo_Table[EMC_MATCH_TABLE_ID].isErr)
+#define EMC_MATCH_TABLE_ID              (0)         //急停报警在报警数组里的序号
+#define ERR_CANT_BACK_HOME              (ErrInfo_Table[EMC_MATCH_TABLE_ID].isErr)
 
 //错误信息查询表
 //单个变频器的读取会阻塞30ms左右，所以实际超时时间会比定义的超时时间长
-//流程超时类报警这里只做上报处理（索引号要与 service.c 中的超时序号对应），停止动作在service.c中会处理
+//流程超时类报警这里只做上报处理，停止动作在service.c中会处理
 Type_ErrStaInfo_Def ErrInfo_Table[] = {
-//  索引号  代码号   错误状态     错误触发    状态计数 触发时间             恢复时间             处理方式
-    {0,     8001,   false,      false,      0,      500,                500,                E_ERROR},   //1#道闸电机过载
-    {1,     8002,   false,      false,      0,      500,                500,                E_ERROR},   //2#道闸电机过载
-    {2,     8003,   false,      false,      0,      500,                500,                E_WARNING}, //顶部摆动电机过载（报警但延迟停机）
-    {3,     8004,   false,      false,      0,      500,                500,                E_WARNING}, //左侧摆动电机过载
-    {4,     8005,   false,      false,      0,      500,                500,                E_WARNING}, //右侧摆动电机过载
-    {5,     8006,   false,      false,      0,      500,                500,                E_ERROR},   //高压泵过载
-    {6,     8007,   false,      false,      0,      500,                500,                E_ERROR},   //低压泵过载（到达风干环节了再报警）
-    {7,     8008,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机1电机过载（报警不停机）
-    {8,     8009,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机2&5变频器故障（报警不停机）
-    {9,     8010,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机3&4变频器故障（报警不停机）
-    {10,    8013,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机6电机过载（报警不停机）
-    {11,    8014,   false,      false,      0,      500,                500,                E_WARNING}, //裙边电机过载（报警但延迟停机）
-    {12,    8015,   false,      false,      0,      500,                500,                E_ERROR},   //左前刷开合电机过载
-    {13,    8016,   false,      false,      0,      500,                500,                E_ERROR},   //右前刷开合电机过载
-    {14,    8017,   false,      false,      0,      500,                500,                E_ERROR},   //左后刷开合电机过载
-    {15,    8018,   false,      false,      0,      500,                500,                E_ERROR},   //右后刷开合电机过载
-    {16,    8019,   false,      false,      0,      500,                500,                E_ERROR},   //顶刷旋转变频器故障
-    {17,    8020,   false,      false,      0,      500,                500,                E_ERROR},   //顶刷上下变频器故障
-    {18,    8021,   false,      false,      0,      500,                500,                E_ERROR},   //1#输送带变频器故障
-    {19,    8022,   false,      false,      0,      500,                500,                E_ERROR},   //2#输送带变频器故障
-    {20,    8023,   false,      false,      0,      500,                500,                E_ERROR},   //3#输送带变频器故障
-    {21,    8024,   false,      false,      0,      500,                500,                E_ERROR},   //左前刷旋转变频器故障
-    {22,    8025,   false,      false,      0,      500,                500,                E_ERROR},   //右前刷旋转变频器故障
-    {23,    8026,   false,      false,      0,      500,                500,                E_ERROR},   //左后刷旋转变频器故障
-    {24,    8027,   false,      false,      0,      500,                500,                E_ERROR},   //右后刷旋转变频器故障
-    {25,    8030,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //顶刷上移超时未检测到限位信号（报警但延迟停机）
-    {26,    8031,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //顶刷下移超时未检测到限位信号（报警但延迟停机）
-    {27,    8032,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //左前刷开超时未检测到限位（报警但延迟停机）
-    {28,    8033,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //右前刷开超时未检测到限位（报警但延迟停机）
-    {29,    8034,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //左后刷开超时未检测到限位（报警但延迟停机）
-    {30,    8035,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //右后刷开超时未检测到限位（报警但延迟停机）
-    {31,    8036,   false,      false,      0,      2000,               500,                E_ERROR},   //顶刷左侧松动报警
-    {32,    8037,   false,      false,      0,      2000,               500,                E_ERROR},   //顶刷右侧松动报警
-    {33,    8038,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //左裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
-    {34,    8039,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //右裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
-    {35,    8040,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //1#道闸落杆超时未检测到限位信号（报警但延迟停机）
-    {36,    8041,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //1#道闸抬杆超时未检测到限位信号（报警但延迟停机）
-    {37,    8042,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //2#道闸落杆超时未检测到限位信号（报警但延迟停机）
-    {38,    8043,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //2#道闸抬杆超时未检测到限位信号（报警但延迟停机）
-    {39,    8050,   false,      false,      0,      1000,               500,                E_ERROR},   //左前侧刷歪报警（拉到开位继续洗，开位还报的话停机）
-    {40,    8051,   false,      false,      0,      1000,               500,                E_ERROR},   //右前侧刷歪报警（拉到开位继续洗）
-    {41,    8052,   false,      false,      0,      1000,               500,                E_ERROR},   //左后侧刷歪报警（拉到开位继续洗）
-    {42,    8053,   false,      false,      0,      1000,               500,                E_ERROR},   //右后侧刷歪报警（拉到开位继续洗）
-    {43,    8054,   false,      false,      0,      FREQ_ERR_T(2000),   FREQ_ERR_T(2000),   E_ERROR},   //顶刷旋转通讯异常
-    {44,    8055,   false,      false,      0,      FREQ_ERR_T(2000),   FREQ_ERR_T(2000),   E_ERROR},   //左前刷通讯异常
-    {45,    8056,   false,      false,      0,      FREQ_ERR_T(2000),   FREQ_ERR_T(2000),   E_ERROR},   //右前刷通讯异常
-    {46,    8057,   false,      false,      0,      FREQ_ERR_T(2000),   FREQ_ERR_T(2000),   E_ERROR},   //左后刷通讯异常
-    {47,    8058,   false,      false,      0,      FREQ_ERR_T(2000),   FREQ_ERR_T(2000),   E_ERROR},   //右后刷通讯异常
-    {48,    8059,   false,      false,      0,      20,                 500,                E_ERROR},   //左前防撞报警
-    {49,    8060,   false,      false,      0,      20,                 500,                E_ERROR},   //右前防撞报警
-    {50,    8061,   false,      false,      0,      20,                 500,                E_ERROR},   //左后防撞报警
-    {51,    8062,   false,      false,      0,      20,                 500,                E_ERROR},   //右后防撞报警
-    {52,    8063,   false,      false,      0,      500,                500,                E_WARNING}, //语音模块通讯异常（报警但延迟停机）
-    {53,    8064,   false,      false,      0,      FREQ_ERR_T(3000),   FREQ_ERR_T(3000),   E_WARNING}, //1#输送带通讯异常（报警但延迟停机）
-    {54,    8065,   false,      false,      0,      FREQ_ERR_T(3000),   FREQ_ERR_T(3000),   E_WARNING}, //2#输送带通讯异常（报警但延迟停机）
-    {55,    8066,   false,      false,      0,      FREQ_ERR_T(3000),   FREQ_ERR_T(3000),   E_WARNING}, //3#输送带通讯异常（报警但延迟停机）
-    {56,    8067,   false,      false,      0,      500,                500,                E_WARNING}, //风机2&5通讯异常（报警但延迟停机）
-    {57,    8068,   false,      false,      0,      500,                500,                E_WARNING}, //风机3&4通讯异常（报警但延迟停机）
-    {58,    8069,   false,      false,      0,      20,                 500,                E_ERROR},   //压力波信号触发
-    {59,    8100,   false,      false,      0,      20,                 500,                E_ERROR},   //紧急停止按下,请复位
-    {60,    8101,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //归位未完成请检查信号
-    {61,    8102,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //缺香波（蓝色）
-    {62,    8103,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //缺蜡水
-    {63,    8104,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //污水高液位
-    {64,    8105,   false,      false,      0,      500,                500,                E_WARNING}, //相序报警
-    {65,    8106,   false,      false,      0,      5000,               500,                E_WARNING}, //水压不足
-    {66,    8107,   false,      false,      0,      500,                500,                E_WARNING}, //高度超高
-    {67,    8108,   false,      false,      0,      1500,               500,                E_WARNING}, //顶刷旋转电流超高
-    {68,    8109,   false,      false,      0,      500,                500,                E_WARNING}, //车头位置丢失报警（侧刷合30S未检测到车头）
-    {69,    8110,   false,      false,      0,      500,                500,                E_WARNING}, //前侧刷启动时低位报警（洗车头过程中侧刷合检测）
-    {70,    8111,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //洗车超时报警
-    {71,    8112,   false,      false,      0,      500,                500,                E_ERROR},   //1#输送带码盘开关故障
-    {72,    8113,   false,      false,      0,      500,                500,                E_ERROR},   //2#输送带码盘开关故障
-    {73,    8114,   false,      false,      0,      500,                500,                E_ERROR},   //3#输送带码盘开关故障
-    {74,    8115,   false,      false,      0,      500,                500,                E_ERROR},   //工作区防追尾被遮挡（待机的时候超10S报警）
-    {75,    8045,   false,      false,      0,      500,                500,                E_ERROR},   //地感信号故障（待机的时候超30S报警）
-    {76,    8046,   false,      false,      0,      500,                500,                E_ERROR},   //左闸压力波信号故障
-    {77,    8047,   false,      false,      0,      500,                500,                E_ERROR},   //右闸压力波信号故障
-    {78,    8048,   false,      false,      0,      500,                500,                E_ERROR},   //前刷低位故障（所有状态5S灭的就报警）
-    {79,    8049,   false,      false,      0,      500,                500,                E_ERROR},   //后刷低位故障（所有状态5S灭的就报警）
-    {80,    8116,   false,      false,      0,      500,                500,                E_ERROR},   //1#道闸开关同时亮
-    {81,    8117,   false,      false,      0,      500,                500,                E_ERROR},   //2#道闸开关同时亮
-    {82,    8118,   false,      false,      0,      500,                500,                E_ERROR},   //顶刷上下同时亮
-    {83,    8119,   false,      false,      0,      1500,               500,                E_ERROR},   //左前刷旋转电流异常
-    {84,    8120,   false,      false,      0,      1500,               500,                E_ERROR},   //右前刷旋转电流异常
-    {85,    8121,   false,      false,      0,      1500,               500,                E_ERROR},   //左后刷旋转电流异常
-    {86,    8122,   false,      false,      0,      1500,               500,                E_ERROR},   //右后刷旋转电流异常
-    {87,    8123,   false,      false,      0,      500,                500,                E_WARNING}, //后裙边电机过载（报警但延迟停机）
-    {88,    8124,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //左后裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
-    {89,    8125,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //右后裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
-    {90,    8126,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE_AUTO_CLRAR},  //有车辆闯入
-    {91,    273,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //用户使用手机APP停止
-    {92,    300,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //顶刷计数异常
-    {93,    309,    false,      false,      0,      2000,               NDEFINE_TIME,       E_ERROR},   //毛刷跟随异常
-    {94,    310,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //左前刷计数异常
-    {95,    311,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //右前刷计数异常
-    {96,    312,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //左后刷计数异常
-    {97,    313,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //右后刷计数异常
-    {98,    500,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第一块子板掉线
-    {99,    501,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第二块子板掉线
-    {100,   502,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第三块子板掉线
-    {101,   503,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第四块子板掉线
-    {102,   504,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第五块子板掉线
-    {103,   505,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第六块子板掉线
-    {104,   8300,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //工作区输送带停止时间超时
-    {105,   8200,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //缺香波（绿色）
-    {106,   8201,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //缺香波（粉色）
-    {107,   8202,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //缺泥沙松动剂
-    {108,   8203,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //缺助干剂
-    {109,   8204,   false,      false,      0,      500,                500,                E_ERROR},   //左前刷开合电机故障
-    {110,   8205,   false,      false,      0,      500,                500,                E_ERROR},   //右前刷开合电机故障
-    {111,   8206,   false,      false,      0,      500,                500,                E_ERROR},   //左后刷开合电机故障
-    {112,   8207,   false,      false,      0,      500,                500,                E_ERROR},   //右后刷开合电机故障
-    {113,   8208,   false,      false,      0,      500,                500,                E_WARNING}, //顶部摆动变频器故障（报警但延迟停机）
-    {114,   8209,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机1变频器故障（报警不停机）
-    {115,   8210,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机2变频器故障（报警不停机）
-    {116,   8211,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机3变频器故障（报警不停机）
-    {117,   8212,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机4变频器故障（报警不停机）
-    {118,   8213,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机5变频器故障（报警不停机）
-    {119,   8214,   false,      false,      0,      500,                500,                E_WARNING}, //裙边刷变频器故障（报警但延迟停机）
-    {120,   8215,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR}, //皮卡车
+//  代码号   错误状态     错误触发    状态计数 触发时间             恢复时间             处理方式
+    {8100,   false,      false,      0,      20,                 500,                E_ERROR},   //紧急停止按下,请复位-------->急停统一放第一行，便于管理
+    {8001,   false,      false,      0,      500,                500,                E_ERROR},   //1#道闸电机过载
+    {8002,   false,      false,      0,      500,                500,                E_ERROR},   //2#道闸电机过载
+    {8003,   false,      false,      0,      500,                500,                E_WARNING}, //顶部摆动电机过载（报警但延迟停机）
+    {8004,   false,      false,      0,      500,                500,                E_WARNING}, //左侧摆动电机过载
+    {8005,   false,      false,      0,      500,                500,                E_WARNING}, //右侧摆动电机过载
+    {8006,   false,      false,      0,      500,                500,                E_ERROR},   //高压泵过载
+    {8007,   false,      false,      0,      500,                500,                E_ERROR},   //低压泵过载（到达风干环节了再报警）
+    {8008,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机1电机过载（报警不停机）
+    {8009,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机2&5变频器故障（报警不停机）
+    {8010,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机3&4变频器故障（报警不停机）
+    {8013,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机6电机过载（报警不停机）
+    {8014,   false,      false,      0,      500,                500,                E_WARNING}, //裙边电机过载（报警但延迟停机）
+    {8015,   false,      false,      0,      500,                500,                E_ERROR},   //左前刷开合电机过载
+    {8016,   false,      false,      0,      500,                500,                E_ERROR},   //右前刷开合电机过载
+    {8017,   false,      false,      0,      500,                500,                E_ERROR},   //左后刷开合电机过载
+    {8018,   false,      false,      0,      500,                500,                E_ERROR},   //右后刷开合电机过载
+    {8019,   false,      false,      0,      500,                500,                E_ERROR},   //顶刷旋转变频器故障
+    {8020,   false,      false,      0,      500,                500,                E_ERROR},   //顶刷上下变频器故障
+    {8021,   false,      false,      0,      500,                500,                E_ERROR},   //1#输送带变频器故障
+    {8022,   false,      false,      0,      500,                500,                E_ERROR},   //2#输送带变频器故障
+    {8023,   false,      false,      0,      500,                500,                E_ERROR},   //3#输送带变频器故障
+    {8024,   false,      false,      0,      500,                500,                E_ERROR},   //左前刷旋转变频器故障
+    {8025,   false,      false,      0,      500,                500,                E_ERROR},   //右前刷旋转变频器故障
+    {8026,   false,      false,      0,      500,                500,                E_ERROR},   //左后刷旋转变频器故障
+    {8027,   false,      false,      0,      500,                500,                E_ERROR},   //右后刷旋转变频器故障
+    {8030,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //顶刷上移超时未检测到限位信号（报警但延迟停机）
+    {8031,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //顶刷下移超时未检测到限位信号（报警但延迟停机）
+    {8032,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //左前刷开超时未检测到限位（报警但延迟停机）
+    {8033,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //右前刷开超时未检测到限位（报警但延迟停机）
+    {8034,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //左后刷开超时未检测到限位（报警但延迟停机）
+    {8035,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //右后刷开超时未检测到限位（报警但延迟停机）
+    {8036,   false,      false,      0,      2000,               500,                E_ERROR},   //顶刷左侧松动报警
+    {8037,   false,      false,      0,      2000,               500,                E_ERROR},   //顶刷右侧松动报警
+    {8038,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //左裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
+    {8039,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //右裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
+    {8040,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //1#道闸落杆超时未检测到限位信号（报警但延迟停机）
+    {8041,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //1#道闸抬杆超时未检测到限位信号（报警但延迟停机）
+    {8042,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //2#道闸落杆超时未检测到限位信号（报警但延迟停机）
+    {8043,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //2#道闸抬杆超时未检测到限位信号（报警但延迟停机）
+    {8050,   false,      false,      0,      1000,               500,                E_ERROR},   //左前侧刷歪报警（拉到开位继续洗，开位还报的话停机）
+    {8051,   false,      false,      0,      1000,               500,                E_ERROR},   //右前侧刷歪报警（拉到开位继续洗）
+    {8052,   false,      false,      0,      1000,               500,                E_ERROR},   //左后侧刷歪报警（拉到开位继续洗）
+    {8053,   false,      false,      0,      1000,               500,                E_ERROR},   //右后侧刷歪报警（拉到开位继续洗）
+    {8054,   false,      false,      0,      FREQ_ERR_T(2000),   FREQ_ERR_T(2000),   E_ERROR},   //顶刷旋转通讯异常
+    {8055,   false,      false,      0,      FREQ_ERR_T(2000),   FREQ_ERR_T(2000),   E_ERROR},   //左前刷通讯异常
+    {8056,   false,      false,      0,      FREQ_ERR_T(2000),   FREQ_ERR_T(2000),   E_ERROR},   //右前刷通讯异常
+    {8057,   false,      false,      0,      FREQ_ERR_T(2000),   FREQ_ERR_T(2000),   E_ERROR},   //左后刷通讯异常
+    {8058,   false,      false,      0,      FREQ_ERR_T(2000),   FREQ_ERR_T(2000),   E_ERROR},   //右后刷通讯异常
+    {8059,   false,      false,      0,      20,                 500,                E_ERROR},   //左前防撞报警
+    {8060,   false,      false,      0,      20,                 500,                E_ERROR},   //右前防撞报警
+    {8061,   false,      false,      0,      20,                 500,                E_ERROR},   //左后防撞报警
+    {8062,   false,      false,      0,      20,                 500,                E_ERROR},   //右后防撞报警
+    {8063,   false,      false,      0,      500,                500,                E_WARNING}, //语音模块通讯异常（报警但延迟停机）
+    {8064,   false,      false,      0,      FREQ_ERR_T(3000),   FREQ_ERR_T(3000),   E_WARNING}, //1#输送带通讯异常（报警但延迟停机）
+    {8065,   false,      false,      0,      FREQ_ERR_T(3000),   FREQ_ERR_T(3000),   E_WARNING}, //2#输送带通讯异常（报警但延迟停机）
+    {8066,   false,      false,      0,      FREQ_ERR_T(3000),   FREQ_ERR_T(3000),   E_WARNING}, //3#输送带通讯异常（报警但延迟停机）
+    {8067,   false,      false,      0,      500,                500,                E_WARNING}, //风机2&5通讯异常（报警但延迟停机）
+    {8068,   false,      false,      0,      500,                500,                E_WARNING}, //风机3&4通讯异常（报警但延迟停机）
+    {8069,   false,      false,      0,      20,                 500,                E_ERROR},   //压力波信号触发
+    {8101,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //归位未完成请检查信号
+    {8102,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //缺香波（蓝色）
+    {8103,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //缺蜡水
+    {8104,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //污水高液位
+    {8105,   false,      false,      0,      500,                500,                E_WARNING}, //相序报警
+    {8106,   false,      false,      0,      5000,               500,                E_WARNING}, //水压不足
+    {8107,   false,      false,      0,      500,                500,                E_WARNING}, //高度超高
+    {8108,   false,      false,      0,      1500,               500,                E_WARNING}, //顶刷旋转电流超高
+    {8109,   false,      false,      0,      500,                500,                E_WARNING}, //车头位置丢失报警（侧刷合30S未检测到车头）
+    {8110,   false,      false,      0,      500,                500,                E_WARNING}, //前侧刷启动时低位报警（洗车头过程中侧刷合检测）
+    {8111,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //洗车超时报警
+    {8112,   false,      false,      0,      500,                500,                E_NOTICE},  //1#输送带码盘开关故障
+    {8113,   false,      false,      0,      500,                500,                E_ERROR},   //2#输送带码盘开关故障
+    {8114,   false,      false,      0,      500,                500,                E_ERROR},   //3#输送带码盘开关故障
+    {8115,   false,      false,      0,      500,                500,                E_NOTICE},  //工作区防追尾被遮挡（待机的时候超10S报警）
+    {8045,   false,      false,      0,      500,                500,                E_ERROR},   //地感信号故障（待机的时候超30S报警）
+    {8046,   false,      false,      0,      500,                500,                E_ERROR},   //左闸压力波信号故障
+    {8047,   false,      false,      0,      500,                500,                E_ERROR},   //右闸压力波信号故障
+    {8048,   false,      false,      0,      500,                500,                E_ERROR},   //前刷低位故障（所有状态5S灭的就报警）
+    {8049,   false,      false,      0,      500,                500,                E_ERROR},   //后刷低位故障（所有状态5S灭的就报警）
+    {8116,   false,      false,      0,      500,                500,                E_ERROR},   //1#道闸开关同时亮
+    {8117,   false,      false,      0,      500,                500,                E_ERROR},   //2#道闸开关同时亮
+    {8118,   false,      false,      0,      500,                500,                E_ERROR},   //顶刷上下同时亮
+    {8119,   false,      false,      0,      1500,               500,                E_ERROR},   //左前刷旋转电流异常
+    {8120,   false,      false,      0,      1500,               500,                E_ERROR},   //右前刷旋转电流异常
+    {8121,   false,      false,      0,      1500,               500,                E_ERROR},   //左后刷旋转电流异常
+    {8122,   false,      false,      0,      1500,               500,                E_ERROR},   //右后刷旋转电流异常
+    {8123,   false,      false,      0,      500,                500,                E_WARNING}, //后裙边电机过载（报警但延迟停机）
+    {8124,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //左后裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
+    {8125,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //右后裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
+    {8126,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE_AUTO_CLRAR},  //有车辆闯入
+    {273,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //用户使用手机APP停止
+    {300,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //顶刷计数异常
+    {309,    false,      false,      0,      2000,               NDEFINE_TIME,       E_ERROR},   //毛刷跟随异常
+    {500,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第一块子板掉线
+    {501,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第二块子板掉线
+    {502,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第三块子板掉线
+    {503,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第四块子板掉线
+    {504,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第五块子板掉线
+    {505,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第六块子板掉线
+    {8300,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //工作区输送带停止时间超时
+    {8200,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //缺香波（绿色）
+    {8201,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //缺香波（粉色）
+    {8202,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //缺泥沙松动剂
+    {8203,   false,      false,      0,      60000,              500,                E_NOTICE_AUTO_CLRAR},   //缺助干剂
+    {8204,   false,      false,      0,      500,                500,                E_ERROR},   //左前刷开合电机故障
+    {8205,   false,      false,      0,      500,                500,                E_ERROR},   //右前刷开合电机故障
+    {8206,   false,      false,      0,      500,                500,                E_ERROR},   //左后刷开合电机故障
+    {8207,   false,      false,      0,      500,                500,                E_ERROR},   //右后刷开合电机故障
+    {8208,   false,      false,      0,      500,                500,                E_WARNING}, //顶部摆动变频器故障（报警但延迟停机）
+    {8209,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机1变频器故障（报警不停机）
+    {8210,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机2变频器故障（报警不停机）
+    {8211,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机3变频器故障（报警不停机）
+    {8212,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机4变频器故障（报警不停机）
+    {8213,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机5变频器故障（报警不停机）
+    {8214,   false,      false,      0,      500,                500,                E_WARNING}, //裙边刷变频器故障（报警但延迟停机）
+    {8225,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //左前刷计数异常
+    {8226,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //右前刷计数异常
+    {8227,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //左后刷计数异常
+    {8228,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //右后刷计数异常
+    {329,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //升降归位超时  （这里的单个超时报警只通知，处理的话有一个总的归位超时报警会处理）
+    {8229,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //左前刷归位超时
+    {8230,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //右前刷归位超时
+    {8231,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //左后刷归位超时
+    {8232,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //右后刷归位超时
+    {8233,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //1#道闸归位超时
+    {8234,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //2#道闸归位超时
 };
 
 //错误状态定义
@@ -198,7 +203,12 @@ void osal_error_upload_callback(uint16_t code, bool value)
     for (uint8_t i = 0; i < ERR_TABLE_NUMBERS; i++)
     {
         if(ErrInfo_Table[i].code == code){
-            ErrInfo_Table[i].isErr = value;
+            if((8040 == code || 8041 == code) && !errNeedFlag.isDetectGate1Enable){
+                ErrInfo_Table[i].isErr = false;
+            }
+            else{
+                ErrInfo_Table[i].isErr = value;
+            }
             break;
         }
     }
@@ -617,7 +627,7 @@ static void xp_error_upload_thread(void *arg)
 
     aos_msleep(1000);        //等待初始化
     if(error.init != 1){
-        LOG_UPLOAD("error module no init~ exit thread~");
+        LOG_UPLOAD("Error module no init~ exit thread~");
         aos_task_exit(0);
     }
 
@@ -625,7 +635,7 @@ static void xp_error_upload_thread(void *arg)
         aos_queue_recv(&error.status, AOS_WAIT_FOREVER, &errCode, &len);
         ret = xp_error_upload(errCode, ERR_TABLE_NUMBERS);
         if(ret != 0){
-            LOG_UPLOAD("error upload fault, ret %d", ret);
+            LOG_UPLOAD("Error upload fault, ret %d", ret);
         }
     }
 }
@@ -654,7 +664,8 @@ static void xp_check_error_thread(void *arg)
         check_ag_error(error.isEmcSta);
         if(ErrInfo_Table[EMC_MATCH_TABLE_ID].isErr){
             error.isEmcSta = true;
-            if(is_signal_filter_trigger(SIGNAL_BUTTON_RESET)){ //检测到复位按钮后急停复位
+            if(is_signal_filter_trigger(SIGNAL_BUTTON_RESET) || errNeedFlag.isSetElectricalReset){ //检测到复位按钮后急停复位
+                errNeedFlag.isSetElectricalReset = false;
                 osal_dev_io_state_change(BOARD1_OUTPUT_SAFE_RELAY_RESET, IO_ENABLE);
                 aos_msleep(500);
                 osal_dev_io_state_change(BOARD1_OUTPUT_SAFE_RELAY_RESET, IO_DISABLE);

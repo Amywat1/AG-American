@@ -606,8 +606,8 @@ int xp_save_kv_params(char *pKeyStr, const void *pData, int len)
     if(pKeyStr && pData){
         int ret = aos_kv_set(pKeyStr, pData, len, 1);
         if(0 == ret)    return 0;
-            LOG_UPLOAD("Update kv fail. <%s> <%d>", pKeyStr, ret);
-            }
+        LOG_UPLOAD("Update kv fail. <%s> <%d>", pKeyStr, ret);
+    }
     return -1;
 }
 
@@ -697,8 +697,13 @@ static int xp_osal_voice_play(Type_AgVoicePos_Enum pos, Type_AgVoice_Enum item)
 {
     bool isSuccess = true;
 #if (1 == USE_DL485_VOICE)
+    uint8_t tryCnt = 3;
     if(AG_VOICE_POS_ENTRY == pos){
-        isSuccess &= dl485_voice_play(pos, item);
+        isSuccess &= (0 == dl485_voice_play(pos, item)) ? true : false;
+        while (!isSuccess && tryCnt--)
+        {
+            isSuccess &= (0 == dl485_voice_play(pos, item)) ? true : false;
+        }
     }
 #endif
 #if (1 == USE_ONBOARD_VOICE)
@@ -1083,6 +1088,7 @@ void xp_osal_water_system_crl_thread(void* arg)
     waterCrl.matchIo[WATER_SHAMPOO_PIKN]        = BOARD1_OUTPUT_SHAMPOO_PINK_VALVE;
     waterCrl.matchIo[WATER_SHAMPOO_GREEN]       = BOARD1_OUTPUT_SHAMPOO_GREEN_VALVE;
     waterCrl.matchIo[WATER_CLEAR_WATER]         = BOARD1_OUTPUT_CLEAR_WATER_VALVE;
+    waterCrl.matchIo[WATER_BASE_PLATE]          = BOARD1_OUTPUT_BASE_PLATE_WASH_VALVE;
     while (1)
     {
         aos_sem_wait(&waterCrl.water_sem, AOS_WAIT_FOREVER);
@@ -1152,6 +1158,7 @@ void xp_osal_water_system_crl_thread(void* arg)
                         //有些水路需要额外使能一些点位
                         if(WATER_WAXWATER == i){
                             osal_dev_io_state_change(BOARD1_OUTPUT_WAXWATER_PUMP, IO_ENABLE);
+                            osal_dev_io_state_change(BOARD1_OUTPUT_DRIER_VALVE, IO_ENABLE);
                         }
                         else if(WATER_SHAMPOO == i){
                             osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PUMP, IO_ENABLE);
@@ -1179,6 +1186,7 @@ void xp_osal_water_system_crl_thread(void* arg)
                     //有些水路需要额外使能一些点位
                     if(WATER_WAXWATER == i){
                         osal_dev_io_state_change(BOARD1_OUTPUT_WAXWATER_PUMP, IO_DISABLE);
+                        osal_dev_io_state_change(BOARD1_OUTPUT_DRIER_VALVE, IO_DISABLE);
                     }
                     else if(WATER_SHAMPOO == i){
                         osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PUMP, IO_DISABLE);
@@ -1210,6 +1218,7 @@ void xp_osal_water_system_crl_thread(void* arg)
                 osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_GREEN_PUMP, IO_DISABLE);
                 osal_dev_io_state_change(BOARD1_OUTPUT_WAXWATER_PUMP, IO_DISABLE);
                 osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_AIR_VALVE, IO_DISABLE);
+                osal_dev_io_state_change(BOARD1_OUTPUT_DRIER_VALVE, IO_DISABLE);
                 aos_msleep(500);
                 for (uint8_t i = 0; i < WATER_CRL_NUM; i++)
                 {
@@ -1260,7 +1269,8 @@ void water_system_control(Type_WaterSystem_Enum type, bool enable)
         //    waterCrl.waterSta[WATER_MIDDLE]     = false;
            waterCrl.waterSta[WATER_SHAMPOO_PIKN]        = false;
            waterCrl.waterSta[WATER_SHAMPOO_GREEN]       = false;
-           waterCrl.waterSta[WATER_CLEAR_WATER]       = false;
+           waterCrl.waterSta[WATER_CLEAR_WATER]         = false;
+           waterCrl.waterSta[WATER_BASE_PLATE]          = false;
         }
         else{
            waterCrl.waterSta[type] = enable;
@@ -1273,6 +1283,7 @@ void water_system_control(Type_WaterSystem_Enum type, bool enable)
 /* ========================================================     信号触发状态监测   ======================================================== */
 /*                                                         =======================                                                         */
 
+//这里的信号触发判定时间较长，对于需要立即响应的信号，不取这里的状态判定值（如报警状态和限位触发）
 //信号信息匹配表
 Type_SignalStaInfo_Def SignalInfo_Table[] = {
 //  信号类型                     //对应的检测引脚                         //信号状态       //信号确认次数、靠近时的位置、离开时的位置
@@ -1315,14 +1326,12 @@ Type_SignalStaInfo_Def SignalInfo_Table[] = {
     {SIGNAL_GATE_2_RIGHT_OPEN,  BOARD5_INPUT_GATE_2_RIGHT_OPEN_DONE,    SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_BUTTON_RESET,       BOARD0_INPUT_BUTTON_RESET,              SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_BUTTON_START,       BOARD0_INPUT_BUTTON_START,              SIGNAL_STABLE,  20,   0,  0},
-    {SIGNAL_BUTTON_STOP,        BOARD0_INPUT_BUTTON_STOP,               SIGNAL_STABLE,  20,   0,  0},
+    {SIGNAL_BUTTON_STOP,        BOARD0_INPUT_BUTTON_STOP,               SIGNAL_STABLE,  3,    0,  0},
     {SIGNAL_BUTTON_PAUSE,       BOARD0_INPUT_BUTTON_PAUSE_RESUME,       SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_BUTTON_ENTRY_START, BOARD4_INPUT_BUTTON_START_ENTRY,        SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_PICKUP_TRUCK,       BOARD4_INPUT_PICKUP_TRUCK_SIGNAL,       SIGNAL_STABLE,  20,   0,  0},
+    {SIGNAL_CAR_WHEEL_OUT,      BOARD1_FINISH_AREA_WHEEL_EXIT,          SIGNAL_STABLE,  20,   0,  0},
 };
-
-//这里的信号触发判定时间较长，对于需要立即响应的信号，不用这里的状态判定（如报警状态和限位触发）
-static Type_SignalStaInfo_Def signalInfo[SIGNAL_NUM] = {0};
 
 /**
  * @brief       光电信号触发判断（多次滤波判定）
@@ -1333,7 +1342,7 @@ static int signal_flip_dir(Type_SignalType_Enum signalType)
     static bool lasSignalState[SIGNAL_NUM] = {0};
     static bool isStartConfirmSignal[SIGNAL_NUM] = {0};
     static uint8_t signalFlipStableCnt[SIGNAL_NUM] = {0};
-    bool signalState = osal_is_io_trigger(signalInfo[signalType].matchIo);
+    bool signalState = osal_is_io_trigger(SignalInfo_Table[signalType].matchIo);
 
     if(false == isStartConfirmSignal[signalType]){
         if(signalState != lasSignalState[signalType]) isStartConfirmSignal[signalType] = true;
@@ -1345,8 +1354,8 @@ static int signal_flip_dir(Type_SignalType_Enum signalType)
         }
         else{
             signalFlipStableCnt[signalType]++;
-            if(signalFlipStableCnt[signalType] >= SIGNAL_COMFIRM_CNT){
-                signalFlipStableCnt[signalType] = SIGNAL_COMFIRM_CNT;				//防止溢出
+            if(signalFlipStableCnt[signalType] >= SignalInfo_Table[signalType].trigCnt){
+                signalFlipStableCnt[signalType] = SignalInfo_Table[signalType].trigCnt;     //防止溢出
 
                 isStartConfirmSignal[signalType] = false;			                //确认完后退出确认，避免影响下一次检测
                 lasSignalState[signalType] = signalState;
@@ -1365,50 +1374,6 @@ static int signal_flip_dir(Type_SignalType_Enum signalType)
  */
 void signal_trigger_state_thread(void *arg)
 {
-    signalInfo[SIGNAL_GROUND].matchIo               = BOARD4_INPUT_RESERVE_1;
-    signalInfo[SIGNAL_ALL_IN].matchIo               = BOARD4_INPUT_ALL_IN_SIGNAL;
-    signalInfo[SIGNAL_LEFT_SKEW].matchIo            = BOARD4_INPUT_STOP_LEFT_SKEW;
-    signalInfo[SIGNAL_RIGHT_SKEW].matchIo           = BOARD4_INPUT_STOP_RIGHT_SKEW;
-    signalInfo[SIGNAL_SUPER_HIGH].matchIo           = BOARD4_INPUT_SUPER_HIGH;
-    signalInfo[SIGNAL_STOP].matchIo                 = BOARD4_INPUT_CAR_STOP_SIGNAL;
-    signalInfo[SIGNAL_ENTRANCE].matchIo             = BOARD4_INPUT_ENTRANCE_SIGNAL;
-    signalInfo[SIGNAL_REAR_END_PROTECT].matchIo     = BOARD0_INPUT_SIGNAL_REAR_END_PROTECT;
-    signalInfo[SIGNAL_AVOID_INTRUDE].matchIo        = BOARD4_INPUT_AVOID_INTRUDE_SIGNAL;
-    signalInfo[SIGNAL_EXIT].matchIo                 = BOARD0_INPUT_SIGNAL_EXIT;
-    signalInfo[SIGNAL_FINISH].matchIo               = BOARD0_INPUT_SIGNAL_FINISH;
-    signalInfo[SIGNAL_LIFTER_UP].matchIo            = BOARD4_INPUT_LIFTER_UP;
-    signalInfo[SIGNAL_LIFTER_DOWN].matchIo          = BOARD4_INPUT_LIFTER_DOWN;
-    signalInfo[SIGNAL_FL_BRUSH_DOWN].matchIo        = BOARD2_INPUT_FRONT_LEFT_BRUSH_DOWN;
-    signalInfo[SIGNAL_FR_BRUSH_DOWN].matchIo        = BOARD2_INPUT_FRONT_RIGHT_BRUSH_DOWN;
-    signalInfo[SIGNAL_BL_BRUSH_DOWN].matchIo        = BOARD2_INPUT_BACK_LEFT_BRUSH_DOWN;
-    signalInfo[SIGNAL_BR_BRUSH_DOWN].matchIo        = BOARD2_INPUT_BACK_RIGHT_BRUSH_DOWN;
-    signalInfo[SIGNAL_FL_MOVE_ZERO].matchIo         = BOARD2_INPUT_FRONT_LEFT_MOVE_ZERO;
-    signalInfo[SIGNAL_FR_MOVE_ZERO].matchIo         = BOARD2_INPUT_FRONT_RIGHT_MOVE_ZERO;
-    signalInfo[SIGNAL_BL_MOVE_ZERO].matchIo         = BOARD2_INPUT_BACK_LEFT_MOVE_ZERO;
-    signalInfo[SIGNAL_BR_MOVE_ZERO].matchIo         = BOARD2_INPUT_BACK_RIGHT_MOVE_ZERO;
-    signalInfo[SIGNAL_FL_BRUSH_CROOKED].matchIo     = BOARD2_INPUT_FRONT_RIGHT_BRUSH_CROOKED;
-    signalInfo[SIGNAL_FR_BRUSH_CROOKED].matchIo     = BOARD2_INPUT_FRONT_RIGHT_BRUSH_CROOKED;
-    signalInfo[SIGNAL_BL_BRUSH_CROOKED].matchIo     = BOARD2_INPUT_BACK_RIGHT_BRUSH_CROOKED;
-    signalInfo[SIGNAL_BR_BRUSH_CROOKED].matchIo     = BOARD2_INPUT_BACK_RIGHT_BRUSH_CROOKED;
-    signalInfo[SIGNAL_LEFT_SKIRT_ZERO].matchIo      = BOARD4_INPUT_FRONT_LEFT_SKIRT_ZERO;
-    signalInfo[SIGNAL_RIGHT_SKIRT_ZERO].matchIo     = BOARD4_INPUT_FRONT_RIGHT_SKIRT_ZERO;
-    signalInfo[SIGNAL_LIFTER_LEFT_DETECH].matchIo   = BOARD4_INPUT_LIFTER_LEFT_DETECH;
-    signalInfo[SIGNAL_LIFTER_RIGHT_DETECH].matchIo  = BOARD4_INPUT_LIFTER_RIGHT_DETECH;
-    signalInfo[SIGNAL_FL_COLLISION].matchIo         = BOARD4_INPUT_FRONT_LEFT_COLLISION;
-    signalInfo[SIGNAL_FR_COLLISION].matchIo         = BOARD4_INPUT_FRONT_RIGHT_COLLISION;
-    signalInfo[SIGNAL_BL_COLLISION].matchIo         = BOARD0_INPUT_BACK_LEFT_COLLISION;
-    signalInfo[SIGNAL_BR_COLLISION].matchIo         = BOARD0_INPUT_BACK_RIGHT_COLLISION;
-    signalInfo[SIGNAL_GATE_1_CLOSE].matchIo         = BOARD5_INPUT_GATE_1_CLOSE_DONE;
-    signalInfo[SIGNAL_GATE_1_OPEN].matchIo          = BOARD5_INPUT_GATE_1_OPEN_DONE;
-    signalInfo[SIGNAL_GATE_2_LEFT_OPEN].matchIo     = BOARD5_INPUT_GATE_2_LEFT_OPEN_DONE;
-    signalInfo[SIGNAL_GATE_2_RIGHT_OPEN].matchIo    = BOARD5_INPUT_GATE_2_RIGHT_OPEN_DONE;
-    signalInfo[SIGNAL_BUTTON_RESET].matchIo         = BOARD0_INPUT_BUTTON_RESET;
-    signalInfo[SIGNAL_BUTTON_START].matchIo         = BOARD0_INPUT_BUTTON_START;
-    signalInfo[SIGNAL_BUTTON_STOP].matchIo          = BOARD0_INPUT_BUTTON_STOP;
-    signalInfo[SIGNAL_BUTTON_PAUSE].matchIo         = BOARD0_INPUT_BUTTON_PAUSE_RESUME;
-    signalInfo[SIGNAL_BUTTON_ENTRY_START].matchIo   = BOARD4_INPUT_BUTTON_START_ENTRY;
-    signalInfo[SIGNAL_PICKUP_TRUCK].matchIo         = BOARD4_INPUT_PICKUP_TRUCK_SIGNAL;
-
     while (1)
     {
         for (uint8_t i = 0; i < SIGNAL_NUM; i++)
@@ -1418,65 +1383,65 @@ void signal_trigger_state_thread(void *arg)
                 switch (i)
                 {
                 case SIGNAL_ENTRANCE:
-                    signalInfo[i].closePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                    LOG_UPLOAD("SIGNAL_ENTRANCE trig close, Pos %d", signalInfo[i].closePos);
+                    SignalInfo_Table[i].closePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
+                    LOG_UPLOAD("SIGNAL_ENTRANCE trig close, Pos %d", SignalInfo_Table[i].closePos);
                     break;
                 case SIGNAL_REAR_END_PROTECT:
-                    signalInfo[i].closePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                    LOG_UPLOAD("SIGNAL_REAR_END_PROTECT trig close, Pos %d", signalInfo[i].closePos);
+                    SignalInfo_Table[i].closePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
+                    LOG_UPLOAD("SIGNAL_REAR_END_PROTECT trig close, Pos %d", SignalInfo_Table[i].closePos);
                     break;
                 case SIGNAL_AVOID_INTRUDE:
-                    signalInfo[i].closePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                    LOG_UPLOAD("SIGNAL_AVOID_INTRUDE trig close, Pos %d", signalInfo[i].closePos);
+                    SignalInfo_Table[i].closePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
+                    LOG_UPLOAD("SIGNAL_AVOID_INTRUDE trig close, Pos %d", SignalInfo_Table[i].closePos);
                     break;
                 case SIGNAL_EXIT:
-                    signalInfo[i].closePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                    LOG_UPLOAD("SIGNAL_EXIT trig close, Pos %d", signalInfo[i].closePos);
+                    SignalInfo_Table[i].closePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
+                    LOG_UPLOAD("SIGNAL_EXIT trig close, Pos %d", SignalInfo_Table[i].closePos);
                     break;
                 case SIGNAL_FINISH:
-                    signalInfo[i].closePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                    LOG_UPLOAD("SIGNAL_FINISH trig close, Pos %d", signalInfo[i].closePos);
+                    SignalInfo_Table[i].closePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
+                    LOG_UPLOAD("SIGNAL_FINISH trig close, Pos %d", SignalInfo_Table[i].closePos);
                     break;
                 case SIGNAL_PICKUP_TRUCK:
-                    signalInfo[i].closePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                    LOG_UPLOAD("SIGNAL_PICKUP_TRUCK trig close, Pos %d", signalInfo[i].closePos);
+                    SignalInfo_Table[i].closePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
+                    LOG_UPLOAD("SIGNAL_PICKUP_TRUCK trig close, Pos %d", SignalInfo_Table[i].closePos);
                     break;
                 default:
                     break;
                 }
-                signalInfo[i].trigDir = trigDir;        //赋值当前信号源触发状态
+                SignalInfo_Table[i].trigDir = trigDir;      //赋值当前信号源触发状态
             }
             else if(IO_NO_TRIGGER == trigDir){
                 switch (i)
                 {
                 case SIGNAL_ENTRANCE:
-                    signalInfo[i].leavePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                    LOG_UPLOAD("SIGNAL_ENTRANCE trig leave, Pos %d", signalInfo[i].leavePos);
+                    SignalInfo_Table[i].leavePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
+                    LOG_UPLOAD("SIGNAL_ENTRANCE trig leave, Pos %d", SignalInfo_Table[i].leavePos);
                     break;
                 case SIGNAL_REAR_END_PROTECT:
-                    signalInfo[i].leavePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                    LOG_UPLOAD("SIGNAL_REAR_END_PROTECT trig leave, Pos %d", signalInfo[i].leavePos);
+                    SignalInfo_Table[i].leavePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
+                    LOG_UPLOAD("SIGNAL_REAR_END_PROTECT trig leave, Pos %d", SignalInfo_Table[i].leavePos);
                     break;
                 case SIGNAL_AVOID_INTRUDE:
-                    signalInfo[i].leavePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                    LOG_UPLOAD("SIGNAL_AVOID_INTRUDE trig leave, Pos %d", signalInfo[i].leavePos);
+                    SignalInfo_Table[i].leavePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
+                    LOG_UPLOAD("SIGNAL_AVOID_INTRUDE trig leave, Pos %d", SignalInfo_Table[i].leavePos);
                     break;
                 case SIGNAL_EXIT:
-                    signalInfo[i].leavePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                    LOG_UPLOAD("SIGNAL_EXIT trig leave, Pos %d", signalInfo[i].leavePos);
+                    SignalInfo_Table[i].leavePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
+                    LOG_UPLOAD("SIGNAL_EXIT trig leave, Pos %d", SignalInfo_Table[i].leavePos);
                     break;
                 case SIGNAL_FINISH:
-                    signalInfo[i].leavePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                    LOG_UPLOAD("SIGNAL_FINISH trig leave, Pos %d", signalInfo[i].leavePos);
+                    SignalInfo_Table[i].leavePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
+                    LOG_UPLOAD("SIGNAL_FINISH trig leave, Pos %d", SignalInfo_Table[i].leavePos);
                     break;
                 case SIGNAL_PICKUP_TRUCK:
-                    signalInfo[i].leavePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                    LOG_UPLOAD("SIGNAL_PICKUP_TRUCK trig leave, Pos %d", signalInfo[i].leavePos);
+                    SignalInfo_Table[i].leavePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
+                    LOG_UPLOAD("SIGNAL_PICKUP_TRUCK trig leave, Pos %d", SignalInfo_Table[i].leavePos);
                     break;
                 default:
                     break;
                 }
-                signalInfo[i].trigDir = trigDir;        //赋值当前信号源触发状态
+                SignalInfo_Table[i].trigDir = trigDir;      //赋值当前信号源触发状态
             }
         }
         aos_msleep(SIGNAL_TRIGGER_THREAD_FREQ);
@@ -1485,7 +1450,7 @@ void signal_trigger_state_thread(void *arg)
 
 Type_SignalStaInfo_Def *get_signal_handle(Type_SignalType_Enum type)
 {
-    return &signalInfo[type];
+    return &SignalInfo_Table[type];
 }
 
 /**
@@ -1516,16 +1481,17 @@ bool is_signal_filter_trigger(Type_SignalType_Enum type)
     || SIGNAL_FL_COLLISION == type
     || SIGNAL_FR_COLLISION == type
     || SIGNAL_BL_COLLISION == type
-    || SIGNAL_BR_COLLISION == type){
+    || SIGNAL_BR_COLLISION == type
+    || SIGNAL_CAR_WHEEL_OUT == type){
     // || SIGNAL_PICKUP_TRUCK == type
     // || SIGNAL_FL_BRUSH_DOWN == type          //侧刷低位已在IO检测处取反（便于限位停止移动判定）
     // || SIGNAL_FR_BRUSH_DOWN == type
     // || SIGNAL_BL_BRUSH_DOWN == type
     // || SIGNAL_BR_BRUSH_DOWN == type){
-        return (IO_IS_TRIGGER == signalInfo[type].trigDir) ? false : true;
+        return (IO_IS_TRIGGER == SignalInfo_Table[type].trigDir) ? false : true;
     }
     else{
-        return (IO_NO_TRIGGER == signalInfo[type].trigDir) ? false : true;
+        return (IO_NO_TRIGGER == SignalInfo_Table[type].trigDir) ? false : true;
     }
 }
 
@@ -1724,7 +1690,7 @@ static int xp_osal_motor_state_set(Type_MotorInfo_Def* const pMotor, Type_MoveSt
             pMotor->moveInfo.state = state;
         }
         else {
-            LOG_UPLOAD("%s state switch not allowed, %s -> %s", xp_get_device_str(pMotor - &MotorDev_Table[0]), xp_osal_move_get_state_str(CurrState), xp_osal_move_get_state_str(state));
+            printf("%s state switch not allowed, %s -> %s\r\n", xp_get_device_str(pMotor - &MotorDev_Table[0]), xp_osal_move_get_state_str(CurrState), xp_osal_move_get_state_str(state));
             return -1;				            //不允许的状态切换
         }
         if (MOTOR_STA_PAUSE != CurrState) {
@@ -1737,7 +1703,7 @@ static int xp_osal_motor_state_set(Type_MotorInfo_Def* const pMotor, Type_MoveSt
         // LOG_DEBUG("%s state switch OK, %s -> %s", xp_get_device_str(pMotor - &MotorDev_Table[0]), xp_osal_move_get_state_str(CurrState), xp_osal_move_get_state_str(state));
     }
     else {					                    //已是当前状态
-        LOG_UPLOAD("%s already in %s state", xp_get_device_str(pMotor - &MotorDev_Table[0]), xp_osal_move_get_state_str(CurrState));
+        printf("%s already in %s state\r\n", xp_get_device_str(pMotor - &MotorDev_Table[0]), xp_osal_move_get_state_str(CurrState));
     }
     return 0;
 }
@@ -1839,6 +1805,12 @@ static bool is_dev_limit_touched(Type_MotorInfo_Def* const pMotor)
             if(GATE_1_MACH_ID == pMotor->drvIndex){
                 if(is_signal_filter_trigger(SIGNAL_ALL_IN)){
                 // || is_signal_filter_trigger(SIGNAL_GROUND)){
+                    return true;
+                }else{}//继续判断限位
+            }
+            //皮卡检测光电触发不允许顶刷下降，在这里特殊处理
+            else if(LIFTER_MATCH_ID == pMotor->drvIndex){
+                if(is_signal_filter_trigger(SIGNAL_PICKUP_TRUCK)){
                     return true;
                 }else{}//继续判断限位
             }
@@ -2117,10 +2089,10 @@ void xp_osal_dev_run_thread(void* arg)
                         case CONVEYOR_2_MATCH_ID:       osal_error_upload(8113, true);   break;
                         case CONVEYOR_3_MATCH_ID:       osal_error_upload(8114, true);   break;
                         case LIFTER_MATCH_ID:           osal_error_upload(300, true);    break;
-                        case FRONT_LEFT_MOVE_MATCH_ID:  osal_error_upload(310, true);    break;
-                        case FRONT_RIGHT_MOVE_MATCH_ID: osal_error_upload(311, true);    break;
-                        case BACK_LEFT_MOVE_MATCH_ID:   osal_error_upload(312, true);    break;
-                        case BACK_RIGHT_MOVE_MATCH_ID:  osal_error_upload(313, true);    break;
+                        case FRONT_LEFT_MOVE_MATCH_ID:  osal_error_upload(8225, true);   break;
+                        case FRONT_RIGHT_MOVE_MATCH_ID: osal_error_upload(8226, true);   break;
+                        case BACK_LEFT_MOVE_MATCH_ID:   osal_error_upload(8227, true);   break;
+                        case BACK_RIGHT_MOVE_MATCH_ID:  osal_error_upload(8228, true);   break;
                         default:
                             break;
                         }
