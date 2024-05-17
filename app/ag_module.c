@@ -456,7 +456,6 @@ static int conveyor_move(Type_CrlType_Enum type, Type_DriverCmd_Enum cmd);
 
 void conveyor_run_crl_thread(void *arg)
 {
-    bool isClearWorkAreaConveyor = false;
     uint32_t recoderEncValue = 0;
     uint32_t finishAreaConveyorEnc;
     uint64_t exitTriggerTimeStamp = 0;
@@ -473,13 +472,11 @@ void conveyor_run_crl_thread(void *arg)
         //输送带1#控制
         if(isNewCarReadyWash){                                          //下一辆车正在进入工作区时，若前面没有车，输送带1#，2#一起动，否则，输送带1#跟随2#启停
             /* 洗车的时候可能会超时清不成功，这里后面尝试在不洗车的时候清 */
-            if(!isClearWorkAreaConveyor){
-                isClearConveyorEncSuccess = false;
+            if(!isClearConveyorEncSuccess){
                 uint32_t workAreaConveyorEnc = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                //多次清除无效后就不清了，下次再清
-                if(workAreaConveyorEnc < 50 || encClearCnt++ > 60){     //扫码启动后，若码盘值较大，则清零，避免溢出（清除时，输送待可能在动，所以这里给到一定余量）
-                    isClearWorkAreaConveyor = true;                     //清零成功后再动作输送带
-                    isClearConveyorEncSuccess = true;
+                //多次清除无效后就不清了，下次再清，洗车流程里，这里会一直等待 isClearConveyorEncSuccess 为true，所以这里等待时间不宜过长
+                if(workAreaConveyorEnc < 50 || encClearCnt++ > 20){     //扫码启动后，若码盘值较大，则清零，避免溢出（清除时，输送待可能在动，所以这里给到一定余量）
+                    isClearConveyorEncSuccess = true;                   //清零成功后再动作输送带
                     char *tempBuf = aos_malloc(50);
                     char *valueBuf = aos_malloc(50 * SUPPORT_WASH_NUM_MAX);
                     memset(tempBuf, 0, 50);
@@ -535,7 +532,6 @@ void conveyor_run_crl_thread(void *arg)
             }
         }
         else{
-            isClearWorkAreaConveyor = false;
             encClearCnt = 0;
             if(!is_dev_move_sta_idle(CONVEYOR_1_MATCH_ID)){
                 conveyor_move(CRL_SECTION_1, CMD_STILL);
@@ -1789,7 +1785,7 @@ int step_dev_wash(uint8_t *completeId)
     workAreaConveyorEnc = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
 
     if(!isClearConveyorEncSuccess){
-        if(waitOverCnt++ > 200){                        //这里的时间需要大于清脉冲的超时时间
+        if(waitOverCnt++ > 20){                        //这里的时间需要大于清脉冲的超时时间
             LOG_UPLOAD("Clear conveyor enc over time");
             return ERR_TIMEOUT;
         }
@@ -1811,28 +1807,30 @@ int step_dev_wash(uint8_t *completeId)
             return ERR_TIMEOUT;
         }
         if(is_signal_filter_trigger(SIGNAL_ENTRANCE)){
-            isCarMoveToWash = true;
-            carTailLeaveEntrenceTimeStamp = aos_now_ms();
-            if(0 == carWash[entryCarIndex].headPos){
-                carWash[entryCarIndex].headPos = workAreaConveyorEnc;   //记录车头位置
-                LOG_UPLOAD("Car index %d, head pos %d", entryCarIndex, carWash[entryCarIndex].headPos);
-                water_system_control(WATER_HIGH_PRESS_WATER, true);
-                brush[BRUSH_TOP].isReadyCalibrate           = false;
-                brush[BRUSH_TOP].isCalibrated               = false;
-                brush[BRUSH_FORNT_LEFT].isReadyCalibrate    = false;
-                brush[BRUSH_FORNT_LEFT].isCalibrated        = false;
-                brush[BRUSH_FORNT_RIGHT].isReadyCalibrate   = false;
-                brush[BRUSH_FORNT_RIGHT].isCalibrated       = false;
-                brush[BRUSH_BACK_LEFT].isReadyCalibrate     = false;
-                brush[BRUSH_BACK_LEFT].isCalibrated         = false;
-                brush[BRUSH_BACK_RIGHT].isReadyCalibrate    = false;
-                brush[BRUSH_BACK_RIGHT].isCalibrated        = false;
-                carWashTimeStamp[entryCarIndex] = aos_now_ms();
-                isCarIntrude = false;
-                isPickupTruck = false;
-                set_error_state(8126, false);
-                recordWorkAreaConveyorEnc = 0;
-                recordLifterPosValue = 0;
+            if(!is_dev_move_sta_idle(CONVEYOR_1_MATCH_ID)){     //这里需要等待输送带动起来再去检测
+                isCarMoveToWash = true;
+                carTailLeaveEntrenceTimeStamp = aos_now_ms();
+                if(0 == carWash[entryCarIndex].headPos){
+                    carWash[entryCarIndex].headPos = workAreaConveyorEnc;   //记录车头位置
+                    LOG_UPLOAD("Car index %d, head pos %d", entryCarIndex, carWash[entryCarIndex].headPos);
+                    water_system_control(WATER_HIGH_PRESS_WATER, true);
+                    brush[BRUSH_TOP].isReadyCalibrate           = false;
+                    brush[BRUSH_TOP].isCalibrated               = false;
+                    brush[BRUSH_FORNT_LEFT].isReadyCalibrate    = false;
+                    brush[BRUSH_FORNT_LEFT].isCalibrated        = false;
+                    brush[BRUSH_FORNT_RIGHT].isReadyCalibrate   = false;
+                    brush[BRUSH_FORNT_RIGHT].isCalibrated       = false;
+                    brush[BRUSH_BACK_LEFT].isReadyCalibrate     = false;
+                    brush[BRUSH_BACK_LEFT].isCalibrated         = false;
+                    brush[BRUSH_BACK_RIGHT].isReadyCalibrate    = false;
+                    brush[BRUSH_BACK_RIGHT].isCalibrated        = false;
+                    carWashTimeStamp[entryCarIndex] = aos_now_ms();
+                    isCarIntrude = false;
+                    isPickupTruck = false;
+                    set_error_state(8126, false);
+                    recordWorkAreaConveyorEnc = 0;
+                    recordLifterPosValue = 0;
+                }
             }
         }
         // else if(workAreaConveyorEnc - carWash[entryCarIndex].headPos > CAR_MIN_LENGTH){  //车头过一段距离后再检测车尾
@@ -3337,6 +3335,7 @@ void set_step_pause_time(uint64_t value)
 void set_new_car_ready_wash_falg(bool value)
 {
     isNewCarReadyWash = value;
+    isClearConveyorEncSuccess = false;
 }
 
 bool get_new_car_ready_wash_falg(void)
