@@ -89,7 +89,7 @@ int xp_board_check(void)
     if(isExitDevName)   aos_kv_set("device_name",    record_device_name,    strlen(record_device_name), 1);
     if(isExitDevSecret) aos_kv_set("device_secret",  record_device_secret,  strlen(record_device_secret), 1);
     while(1){
-        LOG_UPLOAD("4G rssi: %d.",ec20_rssi_get());
+        // LOG_UPLOAD("4G rssi: %d.",ec20_rssi_get());
         aos_msleep(60000);
         return 0;
     }

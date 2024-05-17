@@ -201,6 +201,7 @@ typedef struct{
 
 //远程功能按钮控制指令
 typedef struct{
+    bool enableStation;
     bool detectLifterLoose;
     bool detectWaterPress;
     bool detectShampoo;
@@ -223,6 +224,7 @@ typedef struct{
     bool detectSuperHigh;
     bool detectCleaner;
     bool detectDrier;
+    bool enableManualMode;
 
     bool detectAllCollision;
     bool detectFLeftCollision;
@@ -393,6 +395,7 @@ typedef enum{
     CMD_CONVEYOR_2_VALVE,
     CMD_CONVEYOR_3_VALVE,
     //功能按钮
+    CMD_ENABLE_STATION,
     CMD_DETECT_LIFTER_LOOSE,
     CMD_DETECT_WATER_PRESS,
     CMD_DETECT_SHAMPOO,
@@ -415,6 +418,7 @@ typedef enum{
     CMD_DETECT_SUPER_HIGH,
     CMD_DETECT_CLEANER,
     CMD_DETECT_DRIER,
+    CMD_ENABLE_MANUAL_MODE,
     //防撞功能设置
     CMD_DETECT_ALL_COLLISION,
     CMD_DETECT_FLEFT_COLLISION,
@@ -475,12 +479,10 @@ typedef struct {
 typedef struct {
     bool                isNewOrder;
     bool                isNewOrderSave;
-    bool                isNewFailedOrderSave;
     bool                isNewCompleteOrderSave;
     bool                isNewOfflineOrderSave;
     bool                isNewDateSave;
     uint32_t            completeCnt;
-    uint32_t            failCnt;
     uint32_t            offlineStartNum;
     Type_OrdersNum_Def  today;
     Type_OrdersNum_Def  month[12];

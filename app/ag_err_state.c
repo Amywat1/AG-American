@@ -119,6 +119,10 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     {273,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //用户使用手机APP停止
     {300,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //顶刷计数异常
     {309,    false,      false,      0,      2000,               NDEFINE_TIME,       E_ERROR},   //毛刷跟随异常
+    // {310,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //左前刷计数异常
+    // {311,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //右前刷计数异常
+    {312,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //左后刷计数异常
+    {313,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //右后刷计数异常
     {500,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第一块子板掉线
     {501,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第二块子板掉线
     {502,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第三块子板掉线
@@ -141,10 +145,6 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     {8212,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机4变频器故障（报警不停机）
     {8213,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机5变频器故障（报警不停机）
     {8214,   false,      false,      0,      500,                500,                E_WARNING}, //裙边刷变频器故障（报警但延迟停机）
-    {8225,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //左前刷计数异常
-    {8226,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //右前刷计数异常
-    {8227,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //左后刷计数异常
-    {8228,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //右后刷计数异常
     {329,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //升降归位超时  （这里的单个超时报警只通知，处理的话有一个总的归位超时报警会处理）
     {8229,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //左前刷归位超时
     {8230,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //右前刷归位超时

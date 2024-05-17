@@ -462,6 +462,7 @@ void conveyor_run_crl_thread(void *arg)
     uint64_t exitTriggerTimeStamp = 0;
     uint64_t exitNotTriggerTimeStamp = 0;
     bool isExitSignalTrigger = false;
+    uint8_t encClearCnt = 0;
 
     while (1)
     {
@@ -471,10 +472,12 @@ void conveyor_run_crl_thread(void *arg)
         }
         //输送带1#控制
         if(isNewCarReadyWash){                                          //下一辆车正在进入工作区时，若前面没有车，输送带1#，2#一起动，否则，输送带1#跟随2#启停
+            /* 洗车的时候可能会超时清不成功，这里后面尝试在不洗车的时候清 */
             if(!isClearWorkAreaConveyor){
                 isClearConveyorEncSuccess = false;
                 uint32_t workAreaConveyorEnc = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                if(workAreaConveyorEnc < 50){                           //扫码启动后，若码盘值较大，则清零，避免溢出（清除时，输送待可能在动，所以这里给到一定余量）
+                //多次清除无效后就不清了，下次再清
+                if(workAreaConveyorEnc < 50 || encClearCnt++ > 60){     //扫码启动后，若码盘值较大，则清零，避免溢出（清除时，输送待可能在动，所以这里给到一定余量）
                     isClearWorkAreaConveyor = true;                     //清零成功后再动作输送带
                     isClearConveyorEncSuccess = true;
                     char *tempBuf = aos_malloc(50);
@@ -508,13 +511,13 @@ void conveyor_run_crl_thread(void *arg)
                     }
                 }
                 if(1 == washCarNum && 0 == carWash[headWashCarId].headPos){ //只有一辆车洗，车头进入工作区前，1#输送带启动
-                    if(is_dev_move_sta_idle(CONVEYOR_1_MATCH_ID)){
-                    // && is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
+                    if(is_dev_move_sta_idle(CONVEYOR_1_MATCH_ID)
+                    && is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
                         conveyor_move(CRL_SECTION_1, CMD_FORWARD);
                     }
                 }
                 else{                           //有多辆车洗或只有一辆车已进入工作区，1#输送带跟随2#
-                    // if(is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
+                    if(is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
                         if(!is_dev_move_sta_idle(CONVEYOR_1_MATCH_ID) && is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)){
                             conveyor_move(CRL_SECTION_1, CMD_STILL);
                         }
@@ -524,15 +527,16 @@ void conveyor_run_crl_thread(void *arg)
                         else{
                             //输送带1#，2#动作相同，不重复执行
                         }
-                    // }
-                    // else{
-                    //     conveyor_move(CRL_SECTION_1, CMD_STILL);
-                    // }
+                    }
+                    else{
+                        conveyor_move(CRL_SECTION_1, CMD_STILL);
+                    }
                 }
             }
         }
         else{
             isClearWorkAreaConveyor = false;
+            encClearCnt = 0;
             if(!is_dev_move_sta_idle(CONVEYOR_1_MATCH_ID)){
                 conveyor_move(CRL_SECTION_1, CMD_STILL);
             }
@@ -544,8 +548,8 @@ void conveyor_run_crl_thread(void *arg)
             }
         }
         if(1 == washCarNum && 0 == carWash[headWashCarId].headPos){ //只有一辆车洗，2#输送带在车辆进入工作区前一直启动
-            if(is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)){
-            // && is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
+            if(is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)
+            && is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
                 conveyor_move(CRL_SECTION_2, CMD_FORWARD);
             }
         }
@@ -1663,11 +1667,17 @@ static int module_change_side_brush_rotation(Type_DriverCmd_Enum conveyorDir)
         return 1;       //侧刷旋转一定时间后返回值表示前侧刷已经换向完成
     }
     else if(3 == changeRotStep && get_diff_ms(moduleSta.timeStamp) > 12000){    //这个流程中参杂了洗车尾，这个时间需要配合洗车尾时间
-        changeRotStep = 4;
-        back_side_brush_rotation(CRL_ONLY_LEFT, CMD_BACKWARD);
-        back_side_brush_rotation(CRL_ONLY_RIGHT, CMD_FORWARD);
-        water_system_control(WATER_BACK_SIDE, true);
+        // changeRotStep = 4;
+        // back_side_brush_rotation(CRL_ONLY_LEFT, CMD_BACKWARD);
+        // back_side_brush_rotation(CRL_ONLY_RIGHT, CMD_FORWARD);
+        // water_system_control(WATER_BACK_SIDE, true);
         moduleSta.timeStamp = aos_now_ms();
+        // 洗车尾结束直接走，后侧刷不再工作
+        conveyor_move(CRL_SECTION_2, conveyorDir);
+        changeRotStep = 6;
+        LOG_UPLOAD("module_change_side_brush_rotation completed!");
+        moduleSta.isComplete = true;
+        return RET_COMPLETE;
     }
     else if(4 == changeRotStep && get_diff_ms(moduleSta.timeStamp) > 2000){
         changeRotStep = 5;
@@ -1779,7 +1789,7 @@ int step_dev_wash(uint8_t *completeId)
     workAreaConveyorEnc = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
 
     if(!isClearConveyorEncSuccess){
-        if(waitOverCnt++ > 20){
+        if(waitOverCnt++ > 200){                        //这里的时间需要大于清脉冲的超时时间
             LOG_UPLOAD("Clear conveyor enc over time");
             return ERR_TIMEOUT;
         }
@@ -1843,9 +1853,6 @@ int step_dev_wash(uint8_t *completeId)
         }
     }
 
-    //超时检测
-    
-
     //防闯入判定（因为顶刷校准完成后就会开始前侧刷电流校准，正常前侧刷会移动到中间洗车头的位置，所以需要在前侧刷校准前确定车辆是否闯入）
     if(!isCarIntrude && carWash[entryCarIndex].headOffsetPos > 0 && carWash[entryCarIndex].headOffsetPos < washProcPos.startTopBrush
     && is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE)){
@@ -1885,7 +1892,7 @@ int step_dev_wash(uint8_t *completeId)
                 carProtectTimeStamp = aos_now_ms();
                 if(!isRearEndProtect){
                     isRearEndProtect = true;
-                    isRearEndProtectStop = (is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)) ? false : true;
+                    isRearEndProtectStop = (is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)) ? false : true;  //如果当前本来就没动，后面就不做恢复
                 }
                 if(!is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID))  conveyor_move(CRL_SECTION_2, CMD_STILL);
                 if(voiceCnt < 5 && get_diff_ms(voiceTimeStamp) > 8000){
@@ -1900,13 +1907,12 @@ int step_dev_wash(uint8_t *completeId)
             }
         }
         else{
-            if(isRearEndProtect){
+            if(isRearEndProtectStop){
                 LOG_UPLOAD("Car move out complete area, continue run");
-                if(isRearEndProtectStop){
-                    conveyor_move(CRL_SECTION_2, CMD_FORWARD);
-                }
+                conveyor_move(CRL_SECTION_2, CMD_FORWARD);
             }
             isRearEndProtect = false;
+            isRearEndProtectStop = false;
             voiceCnt = 0;
         }
     }
@@ -2184,6 +2190,7 @@ int step_dev_wash(uint8_t *completeId)
                         water_system_control(WATER_SHAMPOO_PIKN, false);
                         water_system_control(WATER_SHAMPOO_GREEN, false);
                         water_system_control(WATER_BASE_PLATE, false);
+                        water_system_control(WATER_HIGH_PRESS_WATER, false);
                         brush[BRUSH_TOP].runMode = BRUSH_MANUAL;    //洗车头时，停止顶刷跟随，上升一定距离，避免顶刷长时间刷车身
                         lifter_move_time(CMD_BACKWARD, 1500);
                     }
@@ -2222,6 +2229,7 @@ int step_dev_wash(uint8_t *completeId)
                                 water_system_control(WATER_SHAMPOO_PIKN, true);
                                 water_system_control(WATER_SHAMPOO_GREEN, true);
                                 water_system_control(WATER_BASE_PLATE, true);
+                                water_system_control(WATER_HIGH_PRESS_WATER, true);
                             }
                             ret = NOR_CONTINUE;
                         }
@@ -2536,7 +2544,8 @@ int step_dev_wash(uint8_t *completeId)
                 case PROC_FINISH_DYRING:                            //结束吹风
                     if(carWash[i].isTailProcChanged){
                         carWash[i].isTailProcChanged = false;
-                        if(1 == washCarNum)  dryer_work(CRL_ALL_SECTION, false);    //有多辆车在工作区时不关闭风机
+                        // if(1 == washCarNum)  dryer_work(CRL_ALL_SECTION, false);    //有多辆车在工作区时不关闭风机
+                        dryer_work(CRL_ALL_SECTION, false);
                         LOG_UPLOAD("Car id %d finish dryer", i);
                     }
                     if(!carWash[i].isCarMoveCompleteArea){
@@ -2827,7 +2836,7 @@ void side_brush_follow_thread(void *arg)
                     if((CMD_BACKWARD == needCmd[i] && filterCnt[i] > DECISION_BACKWARD_CMD_CNT)
                     || isBrushCrooked){
                         recordBrushCmdSta[i] = needCmd[i];
-                        if(brush[i].current > brush[i].pressProtect || isBrushCrooked){
+                        if(get_diff_ms(brushMoveTimestamp[i]) > 300 && (brush[i].current > brush[i].pressProtect || isBrushCrooked)){
                             brushMoveTimestamp[i] = aos_now_ms();
                             filterCnt[i] = 0;
                             switch (i)
@@ -2888,7 +2897,6 @@ void side_brush_follow_thread(void *arg)
                             }
                             LOG_INFO("%s current %d is low, forward, PH %d, PL %d", xp_get_brush_str(i), brush[i].current, brushCurrent_H, brushCurrent_L);
                         }
-                        
                     }
                     else if(CMD_STILL == needCmd[i] && filterCnt[i] > DECISION_STILL_CMD_CNT
                     && recordBrushCmdSta[i] != CMD_STILL){

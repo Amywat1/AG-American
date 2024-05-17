@@ -53,6 +53,8 @@ typedef struct {
     // Type_ProcStep_Enum      washExeStep;        //当前执行的洗车步骤
     bool                    isFirstSwitch;
     bool                    isWarningErr;       //是否发生了警告错误
+    bool                    isOnlineOrder;      //是否是线上订单
+    bool                    isGetStartCmd;      //是否收到了洗车指令
     uint32_t                orderNumber[MAX_QUEUE_ORDER_NUMBER];    //存储订单编号
     uint64_t                pauseTimeStamp;     //暂停的时间戳
     uint64_t                servicePauseT;      //暂停时间计时
@@ -74,7 +76,6 @@ typedef struct {
 } Type_CarMoveAreaSta_Def;
 static Type_CarMoveAreaSta_Def carInfo = {0};
 
-static bool isGetStartCmd = false;          //是否收到了洗车指令
 static bool isGetBackHomeCmd = false;       //是否收到归位指令
 static uint64_t customerOpenGate2TimeStamp = 0;     //顾客开2号道闸的时间戳
 static bool isCarWantForwardExit = false;
@@ -101,7 +102,7 @@ typedef enum{
 
 //功能使能与否的KV记录（枚举赋值不允许改变！）
 typedef enum{
-	KV_ENABLE_DEV_CLOSE     = 0,
+	KV_ENABLE_STATION       = 0,
 	KV_ENABLE_LOG_UPLOAD    = 1,
 	KV_ENABLE_SEWAGE_PUMP   = 2,
     KV_ENABLE_TOP_SWING     = 3,
@@ -115,6 +116,7 @@ typedef enum{
     KV_ENABLE_AUTO_RESET    = 11,
     KV_ENABLE_DRYER_DATE_MODE = 12,
     KV_ENABLE_HIGH_PRESS_WASH = 13,
+    KV_ENABLE_MANUAL_MODE   = 16,
 } Type_KvEnableType_Enum;
 
 /*                                                         ========================                                                         */
@@ -270,7 +272,7 @@ static Type_KvDataMap_Def KvDataMap_Table[] = {
     {CMD_DETECT_BRIGHT_COLLISION,   "detect",       &kvService.detectData,          &appModule.localCmd.func.detectBRightCollision, sizeof(kvService.detectData),       KV_DETECT_BR_COLLISION},
     {CMD_DETECT_CLEANER,            "detect",       &kvService.detectData,          &appModule.localCmd.func.detectCleaner,         sizeof(kvService.detectData),       KV_DETECT_CLEANER},
     {CMD_DETECT_DRIER,              "detect",       &kvService.detectData,          &appModule.localCmd.func.detectDrier,           sizeof(kvService.detectData),       KV_DETECT_DRIER},
-    {CMD_DEV_CLOSE,                 "enable",       &kvService.enableData,          &appModule.localCmd.devClose,                   sizeof(kvService.enableData),       KV_ENABLE_DEV_CLOSE},
+    {CMD_ENABLE_STATION,            "enable",       &kvService.enableData,          &appModule.localCmd.func.enableStation,         sizeof(kvService.enableData),       KV_ENABLE_STATION},
     {CMD_LOG,                       "enable",       &kvService.enableData,          &appModule.localCmd.log,                        sizeof(kvService.enableData),       KV_ENABLE_LOG_UPLOAD},
     {CMD_ENABLE_SEWAGE_PUMP,        "enable",       &kvService.enableData,          &appModule.localCmd.func.enableSewagePump,      sizeof(kvService.enableData),       KV_ENABLE_SEWAGE_PUMP},
     {CMD_ENABLE_TOP_SWING,          "enable",       &kvService.enableData,          &appModule.localCmd.func.enableTopSwing,        sizeof(kvService.enableData),       KV_ENABLE_TOP_SWING},
@@ -284,6 +286,7 @@ static Type_KvDataMap_Def KvDataMap_Table[] = {
     {CMD_ENABLE_DRYER_MODE,         "enable",       &kvService.enableData,          &appModule.localCmd.func.enableDryerDateMode,   sizeof(kvService.enableData),       KV_ENABLE_DRYER_DATE_MODE},
     {CMD_ENABLE_AUTO_RESET,         "enable",       &kvService.enableData,          &appModule.localCmd.func.enableAutoReset,       sizeof(kvService.enableData),       KV_ENABLE_AUTO_RESET},
     {CMD_ENABLE_HIGH_PRESS_WASH,    "enable",       &kvService.enableData,          &appModule.localCmd.func.enableHighPressWash,   sizeof(kvService.enableData),       KV_ENABLE_HIGH_PRESS_WASH},
+    {CMD_ENABLE_MANUAL_MODE,        "enable",       &kvService.enableData,          &appModule.localCmd.func.enableManualMode,      sizeof(kvService.enableData),       KV_ENABLE_MANUAL_MODE},
     {CMD_HIGH_PRESS_END_POS,        "epHighPump",   &kvService.endHighPump,         &appModule.localCmd.adjust.highPressEndPos,     sizeof(kvService.endHighPump),      0xFF},
     {CMD_SKIRT_BRUSH_START_POS,     "spSkirtBrush", &kvService.startSkirtBrush,     &appModule.localCmd.adjust.skirtBrushStartPos,  sizeof(kvService.startSkirtBrush),  0xFF},
     {CMD_SKIRT_BRUSH_END_POS,       "epSkirtBrush", &kvService.endSkirtBrush,       &appModule.localCmd.adjust.skirtBrushEndPos,    sizeof(kvService.endSkirtBrush),    0xFF},
@@ -301,7 +304,6 @@ static Type_KvDataMap_Def KvDataMap_Table[] = {
     {CMD_DRYER_END_POS,             "epDryer",      &kvService.endDrying,           &appModule.localCmd.adjust.dryerEndPos,         sizeof(kvService.endDrying),        0xFF},
     {CMD_NULL,                      "time",         &kvService.time,                NULL,   sizeof(kvService.time),                 0xFF},
     {CMD_NULL,                      "completeCnt",  &kvService.order.completeCnt,   NULL,   sizeof(kvService.order.completeCnt),    0xFF},
-    {CMD_NULL,                      "failCnt",      &kvService.order.failCnt,       NULL,   sizeof(kvService.order.failCnt),        0xFF},
     {CMD_NULL,                      "offlineCnt",   &kvService.order.offlineStartNum,NULL,  sizeof(kvService.order.offlineStartNum),0xFF},
     {CMD_NULL,                      "todayCnt",     &kvService.order.today,         NULL,   sizeof(kvService.order.today),          0xFF},
     {CMD_NULL,                      "totalCnt",     &kvService.order.total,         NULL,   sizeof(kvService.order.total),          0xFF},
@@ -310,7 +312,7 @@ static Type_KvDataMap_Def KvDataMap_Table[] = {
 static int set_kv_default_value(void)
 {
     kvService.detectData            = 0x7FFFFFFF;
-    kvService.enableData            = 0x7FFFFFFE;
+    kvService.enableData            = 0x7FFEFFFF;       //低16位默认非手动模式
     kvService.startSkirtBrush       = 50;
     kvService.startShampoo          = 90;
     kvService.startTopBrush         = 150;
@@ -328,7 +330,6 @@ static int set_kv_default_value(void)
     kvService.endDrying             = 1180;
     //日期不用恢复默认值，线程里获取时间更新
     kvService.order.completeCnt     = 0;
-    kvService.order.failCnt         = 0;
     kvService.order.offlineStartNum = 0;
     memset(&kvService.order.today,  0, sizeof(kvService.order.today));
     memset(kvService.order.month,   0, sizeof(kvService.order.month));
@@ -485,10 +486,9 @@ void order_counter_thread(void *arg)
         }
 
         //KV值存储避开音频播放（两个一起运行偶尔会触发hardFault，原因未知，可能跟中断有关）
-        if((kvService.order.isNewOrderSave || kvService.order.isNewFailedOrderSave 
-        || kvService.order.isNewCompleteOrderSave || kvService.order.isNewDateSave
-        || kvService.order.isNewOfflineOrderSave)
-        && get_diff_ms(get_voice_start_time_stamp()) > 25000 && STA_IDLE == wash.state){
+        if((kvService.order.isNewOrderSave || kvService.order.isNewCompleteOrderSave 
+        || kvService.order.isNewDateSave || kvService.order.isNewOfflineOrderSave)
+        && get_diff_ms(get_voice_start_time_stamp()) > 25000 && (STA_IDLE == wash.state || STA_RUN == wash.state)){ //洗车或者待机过程中计KV，尽量保证启动次数和完成次数数值准确
             if(0 == module_lock_voice_mutex(500)){
                 if(kvService.order.isNewOrderSave){
                     kvService.order.isNewOrderSave = false;
@@ -511,11 +511,6 @@ void order_counter_thread(void *arg)
                 if(kvService.order.isNewCompleteOrderSave){
                     kvService.order.isNewCompleteOrderSave = false;
                     xp_save_kv_params("completeCnt", &kvService.order.completeCnt, sizeof(kvService.order.completeCnt));
-                    aos_msleep(10);
-                }
-                if(kvService.order.isNewFailedOrderSave){
-                    kvService.order.isNewFailedOrderSave = false;
-                    xp_save_kv_params("failCnt", &kvService.order.failCnt, sizeof(kvService.order.failCnt));
                     aos_msleep(10);
                 }
                 if(kvService.order.isNewDateSave){
@@ -615,7 +610,7 @@ static void model_status_update_thread(void *arg)
         strcpy(appModule.localSts.minitor.deviceModel, "AG-America");
         appModule.localSts.minitor.startCnt     = kvService.order.total.totals;
         appModule.localSts.minitor.completeCnt  = kvService.order.completeCnt;
-        appModule.localSts.minitor.failedCnt    = kvService.order.failCnt;
+        appModule.localSts.minitor.failedCnt    = kvService.order.total.totals - kvService.order.completeCnt;
 /* ************************************************************** 传感器检测 *************************************************************** */
         appModule.localSts.sensor.emergency             = !osal_is_io_trigger(BOARD0_INPUT_POWER_ON);
         appModule.localSts.sensor.reset                 = is_signal_filter_trigger(SIGNAL_BUTTON_RESET);
@@ -894,7 +889,8 @@ void model_cmd_executed_thread(void *arg)
         case CMD_WASH_FALG_1:
             if(true == appModule.localCmd.washFlag1){
                 if(STA_IDLE == wash.state || STA_RUN == wash.state){
-                    appModule.localCmd.newOrder = TEST_FALG_1_ORDER_NUM;
+                    add_new_order(TEST_FALG_1_ORDER_NUM);
+                    wash.isOnlineOrder = false;
                 }
                 else{
                     if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_wash_flag_1", 0);
@@ -904,7 +900,8 @@ void model_cmd_executed_thread(void *arg)
         case CMD_WASH_FALG_2:
             if(true == appModule.localCmd.washFlag2){
                 if(STA_IDLE == wash.state || STA_RUN == wash.state){
-                    appModule.localCmd.newOrder = TEST_FALG_2_ORDER_NUM;
+                    add_new_order(TEST_FALG_2_ORDER_NUM);
+                    wash.isOnlineOrder = false;
                 }
                 else{
                     if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_wash_flag_2", 0);
@@ -914,13 +911,13 @@ void model_cmd_executed_thread(void *arg)
         case CMD_HOME:
         case CMD_SAFE_HOME:
             if(true == appModule.localCmd.backHome){
-                if(isStopState && false == appModule.localCmd.devClose && true == get_allow_back_home_flag()) {
+                if(isStopState && true == appModule.localCmd.func.enableStation && true == get_allow_back_home_flag()) {
                     isGetBackHomeCmd = true;
                 }
                 else{
                     appModule.localCmd.backHome = false;
                     if(xp_cmd_excuted_complete) xp_cmd_excuted_complete(cmd.identifier, 0);
-                    if(true == appModule.localCmd.devClose){
+                    if(false == appModule.localCmd.func.enableStation){
                         LOG_UPLOAD("now dev is stop state, can not backhome");
                     }
                     else if(false == get_allow_back_home_flag()){
@@ -929,9 +926,15 @@ void model_cmd_executed_thread(void *arg)
                 }
             }
             break;
+        case CMD_NEW_ORDER:
+            if(appModule.localCmd.newOrder != 0){
+                add_new_order(appModule.localCmd.newOrder);
+                wash.isOnlineOrder = true;
+            }
+            break;
         case CMD_START_WASH:
             if(true == appModule.localCmd.startWash){
-                isGetStartCmd = true;
+                wash.isGetStartCmd = true;
                 appModule.localCmd.startWash = false;
                 if(xp_cmd_excuted_complete) xp_cmd_excuted_complete(cmd.identifier, 0);
             }
@@ -976,7 +979,7 @@ void model_cmd_executed_thread(void *arg)
         case CMD_DEBUG:                 xp_remoteCmd_deal(DEVICE_AG, "debug", appModule.localCmd.debug); break;
 
         //KV相关指令
-        case CMD_DEV_CLOSE:
+        case CMD_ENABLE_STATION:
         case CMD_LOG:
         case CMD_DETECT_LIFTER_LOOSE:
         case CMD_DETECT_WATER_PRESS:
@@ -1038,7 +1041,7 @@ void model_cmd_executed_thread(void *arg)
                         LOG_INFO("KV save %s to %d success", KvDataMap_Table[i].key, *(int*)KvDataMap_Table[i].pData);      //这里打印不兼容除int类型外的值
                     }
                     
-                    if(CMD_DEV_CLOSE == cmd.cmd_id && dateValue > 0)    xp_service_set_state(STA_STOP);
+                    if(CMD_ENABLE_STATION == cmd.cmd_id && 0 == dateValue)    xp_service_set_state(STA_STOP);
                     else if(CMD_DETECT_LIFTER_LOOSE == cmd.cmd_id)      err_need_flag_handle()->isDetectLifterLooseEnable = appModule.localCmd.func.detectLifterLoose;
                     else if(CMD_DETECT_WATER_PRESS == cmd.cmd_id)       err_need_flag_handle()->isDetectWaterPressEnable = appModule.localCmd.func.detectWaterPress;
                     else if(CMD_DETECT_SHAMPOO == cmd.cmd_id)           err_need_flag_handle()->isDetectShampooEnable = appModule.localCmd.func.detectShampoo;
@@ -1441,12 +1444,45 @@ static int xp_service_set_state(Type_ServiceState_Enum state)
 }
 
 /**
+ * @brief       增加新订单
+ * @param[in]	orderNum            
+ * @return      int                 
+ */
+int add_new_order(int orderNum)
+{
+    uint8_t i = 0;
+    if(orderNum != 0){
+        for (i = 0; i < MAX_QUEUE_ORDER_NUMBER; i++)
+        {
+            if(0 == wash.orderNumber[i]){
+                wash.orderNumber[i] = orderNum;
+                LOG_UPLOAD("Currently %d orders have been accumulated", i + 1);
+                break;
+            }
+        }
+        if(i >= 3) LOG_UPLOAD("Order too much add failed, MAX %d", MAX_QUEUE_ORDER_NUMBER);
+        else return 0;
+    }
+    else{
+        LOG_UPLOAD("Illegal order number, add failed");
+    }
+    return -1;
+}
+
+/**
  * @brief       准备洗车前的准备动作
  * @param[in]	state               
  * @return      int                 
  */
 static int xp_service_start_wash_ready(Type_ServiceState_Enum state)
 {
+    /* //连续洗测试
+    if(++kvService.order.offlineStartNum > 50000)   kvService.order.offlineStartNum = 0;
+    kvService.order.isNewOfflineOrderSave = true;
+    appModule.localSts.washInfo.offlineOrderNum = wash.washMode*100000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
+    add_new_order(appModule.localSts.washInfo.offlineOrderNum);
+    wash.isOnlineOrder = false; */
+
     LOG_INFO("Device start wash");
     err_need_flag_handle()->isDetectBrushCroooked = true;
     gate_change_state(CRL_SECTION_2, GATE_OPEN);
@@ -1510,12 +1546,14 @@ static void check_button(void)
         if(recordIsButtomTrig[i] != isButtomTrig[i]){
             if(!recordIsButtomTrig[i]){
                 if(BUTTON_START_WASH == i || BUTTON_ENTRY_START == i){
-                    isGetStartCmd = true;
                     // appModule.localCmd.newOrder = TEST_LOCAL_ORDER_NUM;
-                    if(++kvService.order.offlineStartNum > 50000)   kvService.order.offlineStartNum = 0;
+                    //最高位（第9位）表示洗车模式，次高位（第8位）表示按键或者收费机（0为收费机，1为按键）
+                    //低7位表示线下订单启动数量，每单+1，加到9999999后循环
+                    if(++kvService.order.offlineStartNum > 9999999)   kvService.order.offlineStartNum = 0;
                     kvService.order.isNewOfflineOrderSave = true;
-                    appModule.localCmd.newOrder = wash.washMode*100000 + kvService.order.offlineStartNum;
-                    appModule.localSts.washInfo.offlineOrderNum = appModule.localCmd.newOrder;      //上传订单号（包含洗车模式信息）
+                    appModule.localSts.washInfo.offlineOrderNum = wash.washMode*110000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
+                    add_new_order(appModule.localSts.washInfo.offlineOrderNum);
+                    wash.isOnlineOrder = false;
                 }
                 else if(BUTTON_STOP_WASH == i){
                     xp_service_set_state(STA_STOP);
@@ -1555,55 +1593,30 @@ void xp_service_thread(void* arg)
         if (0 == printCnt++ % 50) {
             LOG_INFO("======now service state is %s========", xp_get_state_str(wash.state));
         }
-        //确认按键
-        check_button();
-        //收到启动指令后存储当前订单号，队列满后不再受理后续的订单号
-        if(isGetStartCmd){
-            isGetStartCmd = false;
-            if(appModule.localCmd.newOrder != 0){
-                for (uint8_t i = 0; i < MAX_QUEUE_ORDER_NUMBER; i++)
-                {
-                    if(0 == wash.orderNumber[i]){
-                        wash.orderNumber[i] = appModule.localCmd.newOrder;
-                        appModule.localCmd.newOrder = 0;
-                        LOG_UPLOAD("Currently %d orders have been accumulated", i + 1);
-                        break;
+        //确认按键（仅手动模式下有效）
+        if(appModule.localCmd.func.enableManualMode) check_button();
+        //识别当前是否可以启动新订单车辆
+        if(get_is_allow_next_car_wash_flag()){
+            if(carInfo.isAllowToWash && wash.orderNumber[0] != 0){  //车辆停车位置准确后等待一段时间后启动
+                if(wash.isOnlineOrder){              //线上订单等待用户点击启动后开始洗车
+                    if(wash.isGetStartCmd){
+                        startWashFlag = true;
+                    }
+                }
+                else{
+                    if(!isCarBeReady){
+                        isCarBeReady = true;
+                        carBeReadyTimeStamp = aos_now_ms();
+                    }
+                    else if(get_diff_ms(carBeReadyTimeStamp) > 5000){
+                        startWashFlag = true;
                     }
                 }
             }
             else{
-                LOG_UPLOAD("Get start cmd, but no order number");
-            }
-        }
-        
-        // //接收到洗车指令后若还不允许下一辆车进入则等待允许后重置洗车指令
-        // if(isGetStartCmd && !get_is_allow_next_car_wash_flag()){
-        //     isGetStartCmd = false;
-        //     isNextCarWashWait = true;
-        //     xp_ag_osal_get()->screen.display(AG_CAR_READY_TRANSFER);
-        //     LOG_UPLOAD("New car want wash need wait...");
-        // }
-        // //等待的车辆在允许下一辆车进入时，确定没有左右挺偏状态就启动
-        // if(isNextCarWashWait && get_is_allow_next_car_wash_flag()){
-        //     isGetStartCmd = true;
-        //     isNextCarWashWait = false;
-        //     //如果是等待的车辆，只要不是左右停偏，都认为允许启动
-        //     carInfo.isAllowToWash = (carInfo.parkState != PARK_TOO_LEFT && carInfo.parkState != PARK_TOO_RIGHT) ? true : false;
-        // }
-
-        //识别当前是否可以启动新订单车辆
-        if(get_is_allow_next_car_wash_flag()){
-            if(carInfo.isAllowToWash && wash.orderNumber[0] != 0){  //车辆停车位置准确后等待一段时间后启动
-                if(!isCarBeReady){
-                    isCarBeReady = true;
-                    carBeReadyTimeStamp = aos_now_ms();
-                }
-                else if(get_diff_ms(carBeReadyTimeStamp) > 8000){
-                    startWashFlag = true;
-                }
-            }
-            else{
                 isCarBeReady = false;
+                startWashFlag = false;
+                wash.isGetStartCmd = false;
             }
         }
         //有车结束出口显示绿灯，离开完成光电后红灯
@@ -1659,6 +1672,7 @@ void xp_service_thread(void* arg)
 
             if (startWashFlag) {
                 startWashFlag = false;
+                wash.isGetStartCmd = false;
                 if(0 == xp_service_start_wash_ready(wash.state)){
                     xp_service_set_state(STA_RUN);
                 }
@@ -1686,6 +1700,7 @@ void xp_service_thread(void* arg)
 
             if (startWashFlag) {
                 startWashFlag = false;
+                wash.isGetStartCmd = false;
                 if(0 == xp_service_start_wash_ready(wash.state)){
                     // xp_service_set_state(STA_RUN);
                 }
@@ -1805,12 +1820,6 @@ void xp_service_thread(void* arg)
                     else{
                         voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_SILENCE);
                     }
-#ifdef RECORD_WASH_CNT
-                    if(STA_RUN == wash.lastState){                       //洗车状态异常退出时，计失败次数
-                        kvService.order.failCnt++;
-                        kvService.order.isNewFailedOrderSave = true;
-                    }
-#endif
                 }
                 else if(STA_EXCEPTION == wash.state){
                     xp_ag_osal_get()->screen.display(AG_SERVICE_EXCEPTION);
@@ -1829,7 +1838,7 @@ void xp_service_thread(void* arg)
             }
             else{
                 if(isAutoResetDev && STA_EXCEPTION == wash.state && get_diff_ms(timeStamp) > 3000
-                && false == appModule.localCmd.devClose && true == get_allow_back_home_flag()
+                && true == appModule.localCmd.func.enableStation && true == get_allow_back_home_flag()
                 && !is_signal_filter_trigger(SIGNAL_FL_COLLISION) && !is_signal_filter_trigger(SIGNAL_FR_COLLISION)
                 && !is_signal_filter_trigger(SIGNAL_BL_COLLISION) && !is_signal_filter_trigger(SIGNAL_BR_COLLISION)
                 && !is_signal_filter_trigger(SIGNAL_ENTRANCE) && !is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE) 
@@ -1857,10 +1866,6 @@ void xp_service_thread(void* arg)
                 stop_all_dev_run();
                 xp_ag_osal_get()->screen.display(AG_SERVICE_EXCEPTION);
                 voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_WASH_EXCEPTION);
-#ifdef RECORD_WASH_CNT                      //洗车状态异常退出时，计失败次数
-                kvService.order.failCnt++;
-                kvService.order.isNewFailedOrderSave = true;
-#endif
                 set_driver_executed_flag(false);                //置非执行状态，为归位驱动做准备
             }
 
@@ -1890,7 +1895,7 @@ void xp_service_thread(void* arg)
             if(get_diff_ms(timeStamp) > 5000){
                 xp_service_set_state(STA_IDLE);
                 //测试
-                isGetStartCmd = true;
+                wash.isGetStartCmd = true;
 #else
             if(get_diff_ms(timeStamp) > 10000){
                 xp_service_set_state(STA_IDLE);
@@ -2024,8 +2029,8 @@ int xp_service_debug(char* type, char* fun, char* param)
 
     if (strcasecmp(type, "service") == 0) {
         if (strcasecmp(fun, "start") == 0) {
-            isGetStartCmd = true;
-            appModule.localCmd.newOrder = TEST_LOCAL_ORDER_NUM;
+            add_new_order(TEST_LOCAL_ORDER_NUM);
+            wash.isOnlineOrder = false;
         }
         else if (strcasecmp(fun, "back_home") == 0) {
             if(STA_STOP == wash.state || STA_EXCEPTION == wash.state){
@@ -2043,7 +2048,6 @@ int xp_service_debug(char* type, char* fun, char* param)
         }
         else if (strcasecmp(fun, "clear_wash_record") == 0){
 			kvService.order.completeCnt   = 0;
-			kvService.order.failCnt       = 0;
 			kvService.order.offlineStartNum = 0;
 			memset(&kvService.order.today, 0, sizeof(kvService.order.today));
             memset(kvService.order.month, 0, sizeof(kvService.order.month));
@@ -2051,7 +2055,6 @@ int xp_service_debug(char* type, char* fun, char* param)
             memset(&kvService.order.total, 0, sizeof(kvService.order.total));
 
             kvService.order.isNewCompleteOrderSave = true;
-            kvService.order.isNewFailedOrderSave = true;
             kvService.order.isNewOfflineOrderSave = true;
             kvService.order.isNewOrderSave = true;
 		}
@@ -2067,7 +2070,6 @@ int xp_service_debug(char* type, char* fun, char* param)
             }
         }
         kvService.order.isNewCompleteOrderSave = true;
-        kvService.order.isNewFailedOrderSave = true;
         kvService.order.isNewOrderSave = true;
     }
     else if (strcasecmp(type, "order_daily") == 0){

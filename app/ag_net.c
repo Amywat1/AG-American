@@ -468,6 +468,8 @@ void xp_iot_data_register_thread(void *arg)
     err &= IOT_ADD_PROPERTY_NODE("cmd_func_auto_reset",	        localModelCmd->func.enableAutoReset,    TYPE_Bool,	-1,	CMD_ENABLE_AUTO_RESET);
     err &= IOT_ADD_PROPERTY_NODE("cmd_func_high_press_wash",	localModelCmd->func.enableHighPressWash,TYPE_Bool,	-1,	CMD_ENABLE_HIGH_PRESS_WASH);
     err &= IOT_ADD_PROPERTY_NODE("cmd_func_super_high",	        localModelCmd->func.detectSuperHigh,    TYPE_Bool,	-1,	CMD_DETECT_SUPER_HIGH);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_station_stop_func",	    localModelCmd->func.enableStation,      TYPE_Bool,	-1,	CMD_ENABLE_STATION);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_func_manual_mode",	    localModelCmd->func.enableManualMode,   TYPE_Bool,	-1,	CMD_ENABLE_MANUAL_MODE);
     //防撞功能设置
     err &= IOT_ADD_PROPERTY_NODE("cmd_col_func_left_front",	    localModelCmd->func.detectFLeftCollision,   TYPE_Bool,	-1,	CMD_DETECT_FLEFT_COLLISION);
     err &= IOT_ADD_PROPERTY_NODE("cmd_col_func_right_front",	localModelCmd->func.detectFRightCollision,  TYPE_Bool,	-1,	CMD_DETECT_FRIGHT_COLLISION);

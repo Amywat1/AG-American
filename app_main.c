@@ -17,9 +17,10 @@
 #include "mqtt.h"
 #include "remote_cmd.h"
 #include "../../../1km/common/boardio.h"
+#include "app/ag_service.h"
 
 #define APP_name "AG"
-#define APP_version "AG_WAN-5.0.1"                     // 首位0~4开头为国内版本，5~8为海外版本（有线版本均带WAN，如：AG_WAN-5.0.1）
+#define APP_version "AG_WAN-5.0.2"                     // 首位0~4开头为国内版本，5~8为海外版本（有线版本均带WAN，如：AG_WAN-5.0.1）
 
 // static char product_key[]   ="g8wlob1ucMb";         // product_key 和 product_secret 匹配对应产品
 // static char product_secret[]="PuPs5ZNw3rTOrFtc";
@@ -99,7 +100,6 @@ int application_start(int argc, char *argv[])
             aos_msleep(300);
         }
     }
-    extern void set_app_version(char *version);
     set_app_version(APP_version);
     extern int xp_osal_init(void);
     xp_osal_init();
