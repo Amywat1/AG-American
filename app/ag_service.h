@@ -97,6 +97,7 @@ typedef struct{
     int                 startCnt;
     int                 completeCnt;
     int                 failedCnt;
+    int                 toadyTotalCnt;
     // int                 errCode;
 } Type_ModelSts_monitor_Def;
 
@@ -191,6 +192,7 @@ typedef struct{
     Type_ModelSts_sensor_Def        sensor;
     Type_ModelSts_LED_Def           led;
     bool                            communicateTest;
+    bool                            rebootFlag;
     char                            sDI_IO[BOARD_NUMS][30];          //数组数不能大于最大标识符
     char                            sDO_IO[BOARD_NUMS][30];
     char                            bsDI_IO[BOARD_NUMS + (BOARD_NUMS - 1)*6][10];   //一个点位展示4个IO状态，主板4个点位，子板24个点位

@@ -364,22 +364,22 @@ static int xp_read_kv_value(void)
     }
 
     //单量kv值太多了，放在这里循环读
-    char *buf = aos_malloc(20);
-    for (uint8_t i = 0; i < 12; i++)
-    {
-        sprintf(buf, "monthCnt_%d", i);
-        int len = sizeof(Type_OrdersNum_Def);
-        xp_read_creat_kv_params(buf, &kvService.order.month[i], &len);
-        aos_msleep(1);
-        for (uint8_t j = 0; j < 31; j++)
-        {
-            sprintf(buf, "dailyCnt_%d_%d", i, j);
-            len = sizeof(Type_OrdersNum_Def);
-            xp_read_creat_kv_params(buf, &kvService.order.daily[i][j], &len);
-            aos_msleep(1);
-        }
-    }
-    aos_free(buf);
+    // char *buf = aos_malloc(20);
+    // for (uint8_t i = 0; i < 12; i++)
+    // {
+    //     sprintf(buf, "monthCnt_%d", i);
+    //     int len = sizeof(Type_OrdersNum_Def);
+    //     xp_read_creat_kv_params(buf, &kvService.order.month[i], &len);
+    //     aos_msleep(1);
+    //     for (uint8_t j = 0; j < 31; j++)
+    //     {
+    //         sprintf(buf, "dailyCnt_%d_%d", i, j);
+    //         len = sizeof(Type_OrdersNum_Def);
+    //         xp_read_creat_kv_params(buf, &kvService.order.daily[i][j], &len);
+    //         aos_msleep(1);
+    //     }
+    // }
+    // aos_free(buf);
     
     err_need_flag_handle()->isAllCollisionEnable        = appModule.localCmd.func.detectAllCollision;
     err_need_flag_handle()->isFrontLeftCollisionEnable  = appModule.localCmd.func.detectFLeftCollision;
@@ -488,7 +488,8 @@ void order_counter_thread(void *arg)
         //KV值存储避开音频播放（两个一起运行偶尔会触发hardFault，原因未知，可能跟中断有关）
         if((kvService.order.isNewOrderSave || kvService.order.isNewCompleteOrderSave 
         || kvService.order.isNewDateSave || kvService.order.isNewOfflineOrderSave)
-        && get_diff_ms(get_voice_start_time_stamp()) > 25000 && (STA_IDLE == wash.state || STA_RUN == wash.state)){ //洗车或者待机过程中计KV，尽量保证启动次数和完成次数数值准确
+        && get_diff_ms(get_voice_start_time_stamp()) > 25000 && (STA_IDLE == wash.state)){
+            //洗车或者待机过程中计KV，尽量保证启动次数和完成次数数值准确（洗车过程中先不写，避免洗车的时候挂了）
             if(0 == module_lock_voice_mutex(500)){
                 if(kvService.order.isNewOrderSave){
                     kvService.order.isNewOrderSave = false;
@@ -496,14 +497,14 @@ void order_counter_thread(void *arg)
                     aos_msleep(10);                          //测试不加延时连续存储kv时程序运行会崩溃，原因未知
                     
                     //单个KV尽量不要太大，不然会频繁触发gc（kv的垃圾回收机制），达不到减少擦除次数的效果
-                    char *buf = aos_malloc(20);
-                    sprintf(buf, "monthCnt_%d", time->month - 1);
-                    xp_save_kv_params(buf, &kvService.order.month[time->month - 1], sizeof(Type_OrdersNum_Def));
-                    aos_msleep(10);
-                    sprintf(buf, "dailyCnt_%d_%d", time->month - 1, time->date - 1);
-                    xp_save_kv_params(buf, &kvService.order.daily[time->month - 1][time->date - 1], sizeof(Type_OrdersNum_Def));
-                    aos_msleep(10);
-                    aos_free(buf);
+                    // char *buf = aos_malloc(20);
+                    // sprintf(buf, "monthCnt_%d", time->month - 1);
+                    // xp_save_kv_params(buf, &kvService.order.month[time->month - 1], sizeof(Type_OrdersNum_Def));
+                    // aos_msleep(10);
+                    // sprintf(buf, "dailyCnt_%d_%d", time->month - 1, time->date - 1);
+                    // xp_save_kv_params(buf, &kvService.order.daily[time->month - 1][time->date - 1], sizeof(Type_OrdersNum_Def));
+                    // aos_msleep(10);
+                    // aos_free(buf);
                     
                     xp_save_kv_params("totalCnt", &kvService.order.total, sizeof(kvService.order.total));
                     aos_msleep(10);
@@ -546,6 +547,7 @@ static void model_status_update_thread(void *arg)
     uint8_t logCnt = 0;
     memset(recordIoInputSta, 1, sizeof(recordIoInputSta));
     memset(recordIoOuputSta, 1, sizeof(recordIoOuputSta));
+    appModule.localSts.rebootFlag = 1;                  //上电默认值为1，上报后清零，作为重启识别标志
     
     while (1){
         aos_msleep(500);
@@ -601,8 +603,8 @@ static void model_status_update_thread(void *arg)
         appModule.localSts.minitor.backLeftPutterPos    = xp_osal_get_dev_pos(BACK_LEFT_MOVE_MATCH_ID);
         appModule.localSts.minitor.backRightPutterPos   = xp_osal_get_dev_pos(BACK_RIGHT_MOVE_MATCH_ID);
         appModule.localSts.minitor.topBrushCurrent          = get_brush_current(BRUSH_TOP);
-        appModule.localSts.minitor.frontLeftBrushCurrent    = get_brush_current(BRUSH_FORNT_LEFT);
-        appModule.localSts.minitor.frontRightBrushCurrent   = get_brush_current(BRUSH_FORNT_RIGHT);
+        appModule.localSts.minitor.frontLeftBrushCurrent    = get_brush_current(BRUSH_FRONT_LEFT);
+        appModule.localSts.minitor.frontRightBrushCurrent   = get_brush_current(BRUSH_FRONT_RIGHT);
         appModule.localSts.minitor.backLeftBrushCurrent     = get_brush_current(BRUSH_BACK_LEFT);
         appModule.localSts.minitor.backRightBrushCurrent    = get_brush_current(BRUSH_BACK_RIGHT);
 /* ************************************************************** 检测数据 *************************************************************** */
@@ -611,6 +613,7 @@ static void model_status_update_thread(void *arg)
         appModule.localSts.minitor.startCnt     = kvService.order.total.totals;
         appModule.localSts.minitor.completeCnt  = kvService.order.completeCnt;
         appModule.localSts.minitor.failedCnt    = kvService.order.total.totals - kvService.order.completeCnt;
+        appModule.localSts.minitor.toadyTotalCnt= kvService.order.today.totals;
 /* ************************************************************** 传感器检测 *************************************************************** */
         appModule.localSts.sensor.emergency             = !osal_is_io_trigger(BOARD0_INPUT_POWER_ON);
         appModule.localSts.sensor.reset                 = is_signal_filter_trigger(SIGNAL_BUTTON_RESET);
@@ -1477,9 +1480,9 @@ int add_new_order(int orderNum)
 static int xp_service_start_wash_ready(Type_ServiceState_Enum state)
 {
     /* //连续洗测试
-    if(++kvService.order.offlineStartNum > 50000)   kvService.order.offlineStartNum = 0;
+    if(++kvService.order.offlineStartNum > 9999999)   kvService.order.offlineStartNum = 0;
     kvService.order.isNewOfflineOrderSave = true;
-    appModule.localSts.washInfo.offlineOrderNum = wash.washMode*100000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
+    appModule.localSts.washInfo.offlineOrderNum = wash.washMode*110000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
     add_new_order(appModule.localSts.washInfo.offlineOrderNum);
     wash.isOnlineOrder = false; */
 

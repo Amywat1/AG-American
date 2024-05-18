@@ -143,7 +143,7 @@ int xp_net_init(void)
     xp_mqtt_send_log_callback_regist(xp_mqtt_send_log_callback);
 
     aos_task_new("iot_data_register", xp_iot_data_register_thread, NULL, 8192);
-    aos_task_new("iot_auto_report", xp_iot_auto_report_thread, NULL, 4096);
+    aos_task_new("iot_auto_report", xp_iot_auto_report_thread, NULL, 8192);
     aos_task_new("mqtt_heart", xp_mqtt_heart_thread, NULL, 2048);
     aos_task_new("log_upLoad", xp_log_upload_thread, NULL, 2048);
 
@@ -271,6 +271,7 @@ void xp_iot_data_register_thread(void *arg)
     err &= IOT_ADD_PROPERTY_NODE("sts_wash_start_counts",	    localModelSts->minitor.startCnt,        TYPE_Int,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_wash_complete_counts",	localModelSts->minitor.completeCnt,     TYPE_Int,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_wash_failed_counts",	    localModelSts->minitor.failedCnt,       TYPE_Int,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE("sts_wash_today_counts",	    localModelSts->minitor.toadyTotalCnt,   TYPE_Int,	0,	0);
     //传感器检测
     err &= IOT_ADD_PROPERTY_NODE("sts_emergency",	            localModelSts->sensor.emergency,        TYPE_Bool,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_reset",	                localModelSts->sensor.reset,            TYPE_Bool,	0,	0);
@@ -387,6 +388,8 @@ void xp_iot_data_register_thread(void *arg)
     //     }
     // }
     
+    //重启标志
+    err &= IOT_ADD_PROPERTY_NODE("sts_reboot_flag",		localModelSts->rebootFlag,		TYPE_Bool,	0,	0);
 
 //=============================================读写类点位================================================
     err &= IOT_ADD_PROPERTY_NODE("cmd_new_order",	            localModelCmd->newOrder,        TYPE_Int,   -1,	CMD_NEW_ORDER);
@@ -515,6 +518,7 @@ void xp_iot_auto_report_thread(void *arg)
             }
             isMqttStaConnected = true;
             Iot_auto_property_batch_report_polling();
+            localModelSts->rebootFlag = 0;
         }
         else{
             isMqttStaConnected = false;
