@@ -37,7 +37,7 @@ typedef enum{
     NULL_WASH = 0,
 	NORMAL_WASH,	    //普通洗
 	QUICK_WASH,			//极速洗
-	FINE_WASH			//打蜡精洗
+	FINE_WASH,			//打蜡精洗
 } Type_WashMode_Enum;
 
 //状态点位——订单

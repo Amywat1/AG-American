@@ -173,6 +173,12 @@ typedef enum {
 	BOARD5_INPUT_FRONT_LEFT_SKIRT_ERR,		//左前裙边刷故障
 	BOARD5_INPUT_FRONT_RIGHT_SKIRT_ERR,		//右前裙边刷故障
 	BOARD5_INPUT_WATER_PRESS_LOW_3,			//水压不足====
+	BOARD5_INPUT_RESERVE_5,
+	BOARD5_INPUT_RESERVE_6,
+	BOARD5_INPUT_WASH_MODE_1,
+	BOARD5_INPUT_WASH_MODE_2,
+	BOARD5_INPUT_WASH_MODE_3,
+	BOARD5_INPUT_WASH_MODE_4,
 	BOARD5_INPUT_PIN_NUM,
 } Type_InputIo_Enum;
 
@@ -308,6 +314,7 @@ typedef enum {
 	BOARD5_OUTPUT_SIGNAL_LAMP_GREEN,		//信号灯柱——绿色====
 	BOARD5_OUTPUT_SIGNAL_LAMP_YELLOW,		//信号灯柱——黄色====
 	BOARD5_OUTPUT_SIGNAL_LAMP_RED,			//信号灯柱——红色====
+	BOARD5_OUTPUT_MACHINE_IDEL,				//机器空闲
 	BOARD5_OUTPUT_PIN_NUM,
 } Type_OutputIo_Enum;
 
@@ -546,6 +553,10 @@ typedef enum{
 	SIGNAL_BUTTON_ENTRY_START,
 	SIGNAL_PICKUP_TRUCK,
 	SIGNAL_CAR_WHEEL_OUT,
+	SIGNAL_WASH_MODE_1,
+	SIGNAL_WASH_MODE_2,
+	SIGNAL_WASH_MODE_3,
+	SIGNAL_WASH_MODE_4,
     SIGNAL_NUM,
 } Type_SignalType_Enum;
 //信号信息
@@ -598,4 +609,5 @@ extern bool osal_is_io_trigger(Type_InputIo_Enum index);
 extern int osal_set_dev_limit_mode(Type_DriverIndex_Enum id, Type_LimitMode_Enum mode, uint16_t minPos, uint16_t maxPos);
 extern int clear_dev_encoder(Type_DriverIndex_Enum id);
 extern void osal_error_upload_callback_regist(void (*callback)(uint16_t code, bool value));
+extern void offline_payment_callback_regist(void (*callback)(uint8_t washMode));
 #endif

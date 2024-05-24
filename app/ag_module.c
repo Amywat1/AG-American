@@ -196,6 +196,7 @@ typedef struct{
     bool                isAllChangeBrushRotation;
     bool                isFrontChangeBrushRotation;
     bool                isCarMoveCompleteArea;
+    bool                isBackBrushFinish;
 } Type_CarWashInfo_Def;
 static Type_CarWashInfo_Def carWash[SUPPORT_WASH_NUM_MAX] = {0};
 static bool     isAllowNextCarInWorkArea = false;   //是否允许下一辆车进入清洗
@@ -564,7 +565,7 @@ void conveyor_run_crl_thread(void *arg)
                 //输送带2#，3#动作相同，不重复执行
             }
             if(carWash[headWashCarId].isCarMoveCompleteArea && carWash[headWashCarId].headOffsetPos > washProcPos.startBackBrush + 100){
-                //车辆输送到完成区时间过长则认为异常
+                //车辆输送到完成区时间过长则认为异常（这里有可能因为后车洗车头停那）
                 if(get_diff_ms(exitNotTriggerTimeStamp) > 140000){
                     LOG_UPLOAD("Car move to complete area over time");
                 }
@@ -1218,6 +1219,10 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
             topBrushRecordPosNum = 0;
             break;
         case BRUSH_SIDE_FRONT:
+            if(!is_signal_filter_trigger(SIGNAL_FL_MOVE_ZERO) || !is_signal_filter_trigger(SIGNAL_FR_MOVE_ZERO)){
+                LOG_UPLOAD("Front side brush not in the init pos, EXIT !");
+                return -2;
+            }
             front_side_brush_rotation(CRL_ONLY_LEFT, CMD_FORWARD);
             front_side_brush_rotation(CRL_ONLY_RIGHT, CMD_BACKWARD);
             water_system_control(WATER_FRONT_SIDE, true);
@@ -1227,6 +1232,10 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
             currentSum[BRUSH_FRONT_RIGHT] = 0;
             break;
         case BRUSH_SIDE_BACK:
+            if(!is_signal_filter_trigger(SIGNAL_BL_MOVE_ZERO) || !is_signal_filter_trigger(SIGNAL_BR_MOVE_ZERO)){
+                LOG_UPLOAD("Back side brush not in the init pos, EXIT !");
+                return -2;
+            }
             back_side_brush_rotation(CRL_ONLY_LEFT, CMD_FORWARD);
             back_side_brush_rotation(CRL_ONLY_RIGHT, CMD_BACKWARD);
             water_system_control(WATER_BACK_SIDE, true);
@@ -1668,8 +1677,8 @@ static int module_change_side_brush_rotation(Type_DriverCmd_Enum conveyorDir)
         // back_side_brush_rotation(CRL_ONLY_RIGHT, CMD_FORWARD);
         // water_system_control(WATER_BACK_SIDE, true);
         moduleSta.timeStamp = aos_now_ms();
-        // 洗车尾结束直接走，后侧刷不再工作
-        conveyor_move(CRL_SECTION_2, conveyorDir);
+        // 洗车尾差不多后这个流程就结束，后侧刷不再工作（coneryor速度在洗车尾结束后恢复）
+        // conveyor_move(CRL_SECTION_2, conveyorDir);
         changeRotStep = 6;
         LOG_UPLOAD("module_change_side_brush_rotation completed!");
         moduleSta.isComplete = true;
@@ -2077,8 +2086,9 @@ int step_dev_wash(uint8_t *completeId)
                     }
                 }
             }
-            //后侧刷电流校准
-            if(carWash[i].isFrontBrushWashBody
+            //后侧刷电流校准(如果前面有车在洗时，需要等前面的车后侧刷流程结束后再进行校准)
+            if((1 == washCarNum || (washCarNum > 1 && carWash[headWashCarId].isBackBrushFinish))
+            && carWash[i].isFrontBrushWashBody
             && carWash[i].headProc >= PROC_START_FRONT_BRUSH && carWash[i].headProc < PROC_START_BACK_BRUSH
             && brush[BRUSH_FRONT_LEFT].isCalibrated && brush[BRUSH_FRONT_RIGHT].isCalibrated){
                 if(!brush[BRUSH_BACK_LEFT].isReadyCalibrate || !brush[BRUSH_BACK_RIGHT].isReadyCalibrate){
@@ -2257,6 +2267,7 @@ int step_dev_wash(uint8_t *completeId)
                     brush[BRUSH_BACK_RIGHT].isJogMove = false;
                     carWash[i].isBackBrushInHeadArea  = true;
                     carWash[i].isCarMoveCompleteArea  = true;   //开始后侧刷后即将到达完成光电，准备输送到完成区
+                    carWash[i].isBackBrushFinish = false;
                 }
                 break;
             case PROC_START_WAXWATER:        //开始进程喷蜡水
@@ -2324,14 +2335,6 @@ int step_dev_wash(uint8_t *completeId)
                 //         back_side_brush_move_pos(CRL_ONLY_RIGHT, CMD_FORWARD, PUTTER_GO_MIDDLE_OFFSET);
                 //     }
                 // }
-
-                //判断是否允许下一辆车进入（进入工作区的这辆车洗完车尾后允许下一辆车进入）
-                if(entryCarIndex == i
-                && carWash[i].tailProc >= PROC_FINISH_FRONT_BRUSH && carWash[i].isWashCarTailFinish
-                && is_signal_filter_trigger(SIGNAL_FL_MOVE_ZERO) && is_signal_filter_trigger(SIGNAL_FR_MOVE_ZERO)){
-                    isAllowNextCarInWorkArea = true;    //车尾刷洗完成后允许下一辆车进入
-                    entryCarIndex = 0;                  //允许下一辆车进入后进入车辆的Id编号清零（表示当前无车辆正在进入工作区）
-                }
 
                 //判断是否进入了新流程
                 carWash[i].isTailProcChanged = (carWash[i].lastTailProc == carWash[i].tailProc) ? false : true;
@@ -2477,13 +2480,25 @@ int step_dev_wash(uint8_t *completeId)
                                 else if(SIDE_BRUSH_POS_LEFT == sideBrushWashPos){
                                     sideBrushWashPos = SIDE_BRUSH_POS_RIGHT;
                                     stepSta.isModuleDriverExecuted = false;                 //重置模型驱动
+
+                                    //有车洗车尾快结束了就开放下一辆车进入
+                                    isAllowNextCarInWorkArea = true;
+                                    entryCarIndex = 0;                  //允许下一辆车进入后进入车辆的Id编号清零（表示当前无车辆正在进入工作区）
                                 }
                                 else if(SIDE_BRUSH_POS_RIGHT == sideBrushWashPos){
                                     LOG_UPLOAD("Front side brush wash car tail finish");
                                     stepSta.isModuleDriverExecuted = false;                 //重置模型驱动（用于侧刷归位）
                                     carWash[i].isWashCarTailFinish = true;
+                                    carWash[i].isBackBrushFinish = false;
                                     front_side_brush_rotation(CRL_BOTH, CMD_STILL);
                                     water_system_control(WATER_FRONT_SIDE, false);
+
+                                    if(is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)){
+                                        isRearEndProtect = false;                       //输送带动作后重新判定是否防追尾保护
+                                        conveyor_move(CRL_SECTION_2, CMD_FORWARD);
+                                        water_system_control(WATER_WAXWATER, true);     //输送带继续动作后，继续喷蜡水
+                                        water_system_control(WATER_CLEAR_WATER, true);
+                                    }
                                 }
                                 ret = NOR_CONTINUE;
                             }
@@ -2498,11 +2513,6 @@ int step_dev_wash(uint8_t *completeId)
                         checkType.entryReadyAreaGate    = false;
                         checkType.entryWorkAreaGate     = false;
                         ret = module_dev_reset(&checkType);
-                        if(is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID) && !isRearEndProtect){
-                            conveyor_move(CRL_SECTION_2, CMD_FORWARD);
-                            water_system_control(WATER_WAXWATER, true);    //输送带继续动作后，继续喷蜡水
-                            water_system_control(WATER_CLEAR_WATER, true);
-                        }
                         if(ret < 0){
                             return ret;
                             LOG_UPLOAD("Front brush putter reset err ret %d", ret);
@@ -2537,8 +2547,9 @@ int step_dev_wash(uint8_t *completeId)
                         return ret;
                         LOG_UPLOAD("Back brush putter reset err ret %d", ret);
                     }
-                    else if(RET_COMPLETE == ret && !carWash[i].isCarMoveCompleteArea){
-                        carWash[i].tailProc = PROC_FINISH_WAXWAT;
+                    else if(RET_COMPLETE == ret){
+                        if(!carWash[i].isCarMoveCompleteArea) carWash[i].tailProc = PROC_FINISH_WAXWAT;
+                        carWash[i].isBackBrushFinish = true;
                         ret = NOR_CONTINUE;
                     }
                     break;

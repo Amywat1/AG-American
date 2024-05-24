@@ -560,6 +560,7 @@ void signal_trigger_state_thread(void *arg);
 void osal_dev_io_state_change(Type_OutputIo_Enum index, bool sta);
 
 static void (*osal_error_upload)(uint16_t code, bool value);
+static void (*offline_payment)(uint8_t washMode);
 
 
 /*                                                         =======================                                                         */
@@ -899,6 +900,7 @@ int xp_osal_init(void) {
     agDriver.freq.clearError    = xp_osal_freq_clear_error;
 
     osal_error_upload = NULL;
+    offline_payment = NULL;
 
     aos_mutex_new(&rs485_1_mux);
 
@@ -1331,6 +1333,10 @@ Type_SignalStaInfo_Def SignalInfo_Table[] = {
     {SIGNAL_BUTTON_ENTRY_START, BOARD4_INPUT_BUTTON_START_ENTRY,        SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_PICKUP_TRUCK,       BOARD4_INPUT_PICKUP_TRUCK_SIGNAL,       SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_CAR_WHEEL_OUT,      BOARD1_FINISH_AREA_WHEEL_EXIT,          SIGNAL_STABLE,  20,   0,  0},
+    {SIGNAL_WASH_MODE_1,        BOARD5_INPUT_WASH_MODE_1,               SIGNAL_STABLE,  5,    0,  0},
+    {SIGNAL_WASH_MODE_2,        BOARD5_INPUT_WASH_MODE_2,               SIGNAL_STABLE,  5,    0,  0},
+    {SIGNAL_WASH_MODE_3,        BOARD5_INPUT_WASH_MODE_3,               SIGNAL_STABLE,  5,    0,  0},
+    {SIGNAL_WASH_MODE_4,        BOARD5_INPUT_WASH_MODE_4,               SIGNAL_STABLE,  5,    0,  0},
 };
 
 /**
@@ -1405,6 +1411,18 @@ void signal_trigger_state_thread(void *arg)
                 case SIGNAL_PICKUP_TRUCK:
                     SignalInfo_Table[i].closePos = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
                     LOG_UPLOAD("SIGNAL_PICKUP_TRUCK trig close, Pos %d", SignalInfo_Table[i].closePos);
+                    break;
+                case SIGNAL_WASH_MODE_1:
+                    if(offline_payment) offline_payment(1);
+                    break;
+                case SIGNAL_WASH_MODE_2:
+                    if(offline_payment) offline_payment(2);
+                    break;
+                case SIGNAL_WASH_MODE_3:
+                    if(offline_payment) offline_payment(3);
+                    break;
+                case SIGNAL_WASH_MODE_4:
+                    if(offline_payment) offline_payment(4);
                     break;
                 default:
                     break;
@@ -2452,6 +2470,15 @@ int clear_dev_encoder(Type_DriverIndex_Enum id)
 void osal_error_upload_callback_regist(void (*callback)(uint16_t code, bool value))
 {
     osal_error_upload = callback;
+}
+
+/**
+ * @brief       线下收费机启动回调
+ * @param[in]	callback            
+ */
+void offline_payment_callback_regist(void (*callback)(uint8_t washMode))
+{
+    offline_payment = callback;
 }
 
 /*                                                         =======================                                                         */

@@ -34,6 +34,8 @@
 bool recordIoInputSta[BOARD_NUMS][24];
 bool recordIoOuputSta[BOARD_NUMS][24];
 
+uint8_t clearOfflineOrdeBusyCnt = 0;
+
 typedef struct {
     Type_ModelSts_Def       localSts;           //本地点位状态
     Type_ModelCmd_Def       localCmd;           //本地接收到的点位指令
@@ -178,6 +180,7 @@ static void model_cmd_executed_thread(void *arg);
 static void order_counter_thread(void *arg);
 static void ready_area_detection_thread(void *arg);
 static void xp_err_deal_callback(uint16_t code, Type_ErrDealMode_Enum mode);
+static void offline_payment_callback(uint8_t washMode);
 static int (*xp_cmd_excuted_complete)(char *arg, int value);
 static int xp_read_kv_value(void);
 
@@ -209,6 +212,7 @@ int xp_service_init(void)
     aos_task_new("order_counter",           order_counter_thread, NULL, 1024);
 
     xp_error_deal_callback_regist(xp_err_deal_callback);
+    offline_payment_callback_regist(offline_payment_callback);
 
     wash.isFirstPowerOn = true;
     wash.state = STA_INIT;
@@ -488,7 +492,8 @@ void order_counter_thread(void *arg)
         //KV值存储避开音频播放（两个一起运行偶尔会触发hardFault，原因未知，可能跟中断有关）
         if((kvService.order.isNewOrderSave || kvService.order.isNewCompleteOrderSave 
         || kvService.order.isNewDateSave || kvService.order.isNewOfflineOrderSave)
-        && get_diff_ms(get_voice_start_time_stamp()) > 25000 && (STA_IDLE == wash.state)){
+        && get_diff_ms(get_voice_start_time_stamp()) > 25000 
+        && (STA_IDLE == wash.state || STA_STOP == wash.state || STA_EXCEPTION == wash.state)){
             //洗车或者待机过程中计KV，尽量保证启动次数和完成次数数值准确（洗车过程中先不写，避免洗车的时候挂了）
             if(0 == module_lock_voice_mutex(500)){
                 if(kvService.order.isNewOrderSave){
@@ -1479,14 +1484,16 @@ int add_new_order(int orderNum)
  */
 static int xp_service_start_wash_ready(Type_ServiceState_Enum state)
 {
-    /* //连续洗测试
-    if(++kvService.order.offlineStartNum > 9999999)   kvService.order.offlineStartNum = 0;
-    kvService.order.isNewOfflineOrderSave = true;
-    appModule.localSts.washInfo.offlineOrderNum = wash.washMode*110000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
-    add_new_order(appModule.localSts.washInfo.offlineOrderNum);
-    wash.isOnlineOrder = false; */
+    // //连续洗测试
+    // if(++kvService.order.offlineStartNum > 9999999)   kvService.order.offlineStartNum = 0;
+    // kvService.order.isNewOfflineOrderSave = true;
+    // appModule.localSts.washInfo.offlineOrderNum = wash.washMode*110000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
+    // add_new_order(appModule.localSts.washInfo.offlineOrderNum);
+    // wash.isOnlineOrder = false;
 
     LOG_INFO("Device start wash");
+    osal_dev_io_state_change(BOARD5_OUTPUT_MACHINE_IDEL, IO_ENABLE);
+    clearOfflineOrdeBusyCnt = 0;
     err_need_flag_handle()->isDetectBrushCroooked = true;
     gate_change_state(CRL_SECTION_2, GATE_OPEN);
     set_new_car_ready_wash_falg(true);
@@ -1519,6 +1526,28 @@ static int xp_service_start_wash_ready(Type_ServiceState_Enum state)
         wash.orderNumber[i] = wash.orderNumber[i + 1];
     }
     return 0;
+}
+
+static void offline_payment_callback(uint8_t washMode)
+{
+    switch (washMode)
+    {
+    case 1: wash.washMode = NORMAL_WASH; break;
+    case 2: wash.washMode = NORMAL_WASH; break;
+    case 3: wash.washMode = NORMAL_WASH; break;
+    default:
+        LOG_UPLOAD("Not support this mode");
+        return;
+        break;
+    }
+    osal_dev_io_state_change(BOARD5_OUTPUT_MACHINE_IDEL, IO_ENABLE);
+    //最高位（第9位）表示洗车模式，次高位（第8位）表示按键或者收费机（0为收费机，1为按键）
+    //低7位表示线下订单启动数量，每单+1，加到9999999后循环
+    if(++kvService.order.offlineStartNum > 9999999)   kvService.order.offlineStartNum = 0;
+    kvService.order.isNewOfflineOrderSave = true;
+    appModule.localSts.washInfo.offlineOrderNum = wash.washMode*100000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
+    add_new_order(appModule.localSts.washInfo.offlineOrderNum);
+    wash.isOnlineOrder = false;
 }
 
 #define BUTTOM_NUM      6               //物理按键个数
@@ -1554,7 +1583,7 @@ static void check_button(void)
                     //低7位表示线下订单启动数量，每单+1，加到9999999后循环
                     if(++kvService.order.offlineStartNum > 9999999)   kvService.order.offlineStartNum = 0;
                     kvService.order.isNewOfflineOrderSave = true;
-                    appModule.localSts.washInfo.offlineOrderNum = wash.washMode*110000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
+                    appModule.localSts.washInfo.offlineOrderNum = wash.washMode*100000000 + 10000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
                     add_new_order(appModule.localSts.washInfo.offlineOrderNum);
                     wash.isOnlineOrder = false;
                 }
@@ -1671,6 +1700,13 @@ void xp_service_thread(void* arg)
                 osal_dev_io_state_change(BOARD5_OUTPUT_SIGNAL_LAMP_YELLOW,  IO_DISABLE);
                 set_is_allow_next_car_wash_flag(true);
                 set_error_state(8126, false);
+                clearOfflineOrdeBusyCnt = 0;
+                osal_dev_io_state_change(BOARD5_OUTPUT_MACHINE_IDEL, IO_ENABLE);
+            }
+
+            if(++clearOfflineOrdeBusyCnt == 100){
+                clearOfflineOrdeBusyCnt = 100;
+                osal_dev_io_state_change(BOARD5_OUTPUT_MACHINE_IDEL, IO_DISABLE);
             }
 
             if (startWashFlag) {
@@ -1710,6 +1746,11 @@ void xp_service_thread(void* arg)
                 else{
                     xp_service_set_state(STA_EXCEPTION);
                 }
+            }
+
+            if(++clearOfflineOrdeBusyCnt == 100){
+                clearOfflineOrdeBusyCnt = 100;
+                osal_dev_io_state_change(BOARD5_OUTPUT_MACHINE_IDEL, IO_DISABLE);
             }
 
             //仅在输送带传输过程中检测超高
@@ -1784,6 +1825,13 @@ void xp_service_thread(void* arg)
                     LOG_INFO("Back home success");
                     voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_SILENCE);
                     xp_service_set_state(STA_IDLE);
+
+                    // //连续洗测试
+                    // if(++kvService.order.offlineStartNum > 9999999)   kvService.order.offlineStartNum = 0;
+                    // kvService.order.isNewOfflineOrderSave = true;
+                    // appModule.localSts.washInfo.offlineOrderNum = wash.washMode*110000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
+                    // add_new_order(appModule.localSts.washInfo.offlineOrderNum);
+                    // wash.isOnlineOrder = false;
                 }
                 else{
                     set_error_state(8101, true);
