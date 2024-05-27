@@ -509,13 +509,13 @@ void conveyor_run_crl_thread(void *arg)
                     }
                 }
                 if(1 == washCarNum && 0 == carWash[headWashCarId].headPos){ //只有一辆车洗，车头进入工作区前，1#输送带启动
-                    if(is_dev_move_sta_idle(CONVEYOR_1_MATCH_ID)
-                    && is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
+                    if(is_dev_move_sta_idle(CONVEYOR_1_MATCH_ID)){
+                    // && is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
                         conveyor_move(CRL_SECTION_1, CMD_FORWARD);
                     }
                 }
                 else{                           //有多辆车洗或只有一辆车已进入工作区，1#输送带跟随2#
-                    if(is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
+                    // if(is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
                         if(!is_dev_move_sta_idle(CONVEYOR_1_MATCH_ID) && is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)){
                             conveyor_move(CRL_SECTION_1, CMD_STILL);
                         }
@@ -525,10 +525,10 @@ void conveyor_run_crl_thread(void *arg)
                         else{
                             //输送带1#，2#动作相同，不重复执行
                         }
-                    }
-                    else if(!is_dev_move_sta_idle(CONVEYOR_1_MATCH_ID)){
-                        conveyor_move(CRL_SECTION_1, CMD_STILL);
-                    }
+                    // }
+                    // else if(!is_dev_move_sta_idle(CONVEYOR_1_MATCH_ID)){
+                    //     conveyor_move(CRL_SECTION_1, CMD_STILL);
+                    // }
                 }
             }
         }
@@ -545,8 +545,8 @@ void conveyor_run_crl_thread(void *arg)
             }
         }
         if(1 == washCarNum && 0 == carWash[headWashCarId].headPos){ //只有一辆车洗，2#输送带在车辆进入工作区前一直启动
-            if(is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)
-            && is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
+            if(is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)){
+            // && is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
                 conveyor_move(CRL_SECTION_2, CMD_FORWARD);
             }
         }
@@ -2164,11 +2164,6 @@ int step_dev_wash(uint8_t *completeId)
                     water_system_control(WATER_SHAMPOO_GREEN, true);
                     water_system_control(WATER_BASE_PLATE, true);
                 }
-                //前轮可能在预备区和工作区输送带间打滑，这里加个超时判定
-                if(get_diff_ms(carWashTimeStamp[i]) - get_diff_ms(carProtectTimeStamp) > 120000){
-                    LOG_UPLOAD("Car head move to front brush over time");
-                    return ERR_TIMEOUT;
-                }
                 break;
             case PROC_START_TOP_BRUSH:              //开始进程洗车顶
                 if(carWash[i].isHeadProcChanged){
@@ -2188,6 +2183,12 @@ int step_dev_wash(uint8_t *completeId)
                         water_system_control(WATER_SHAMPOO_GREEN, true);
                         water_system_control(WATER_BASE_PLATE, true);
                     }
+                }
+                //前轮可能在预备区和工作区输送带间打滑，这里加个超时判定
+                //前侧刷不通过输送带脉冲判定，可以通过有没有到前侧刷流程来判定
+                if(get_diff_ms(carWashTimeStamp[i]) > 120000){
+                    LOG_UPLOAD("Car head move to front brush over time");
+                    return ERR_TIMEOUT;
                 }
                 break;
             case PROC_START_FRONT_BRUSH:                        //开始进程前侧刷洗
@@ -2489,10 +2490,6 @@ int step_dev_wash(uint8_t *completeId)
                                 else if(SIDE_BRUSH_POS_LEFT == sideBrushWashPos){
                                     sideBrushWashPos = SIDE_BRUSH_POS_RIGHT;
                                     stepSta.isModuleDriverExecuted = false;                 //重置模型驱动
-
-                                    //有车洗车尾快结束了就开放下一辆车进入
-                                    isAllowNextCarInWorkArea = true;
-                                    entryCarIndex = 0;                  //允许下一辆车进入后进入车辆的Id编号清零（表示当前无车辆正在进入工作区）
                                 }
                                 else if(SIDE_BRUSH_POS_RIGHT == sideBrushWashPos){
                                     LOG_UPLOAD("Front side brush wash car tail finish");
@@ -2502,6 +2499,9 @@ int step_dev_wash(uint8_t *completeId)
                                     front_side_brush_rotation(CRL_BOTH, CMD_STILL);
                                     water_system_control(WATER_FRONT_SIDE, false);
 
+                                    //有车洗车尾结束了就开放下一辆车进入
+                                    isAllowNextCarInWorkArea = true;
+                                    entryCarIndex = 0;                  //允许下一辆车进入后进入车辆的Id编号清零（表示当前无车辆正在进入工作区）
                                     if(is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)){
                                         isRearEndProtect = false;                       //输送带动作后重新判定是否防追尾保护
                                         conveyor_move(CRL_SECTION_2, CMD_FORWARD);
