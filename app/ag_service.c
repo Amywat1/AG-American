@@ -28,13 +28,13 @@
 #define TEST_FALG_2_ORDER_NUM   (222)
 #define TEST_LOCAL_ORDER_NUM    (888)
 
-#define MAX_QUEUE_ORDER_NUMBER  (3)             //支持的最大订单排队数量
-
+#define MAX_QUEUE_ORDER_NUMBER  (5)             //支持的最大订单排队数量
 
 bool recordIoInputSta[BOARD_NUMS][24];
 bool recordIoOuputSta[BOARD_NUMS][24];
 
 uint8_t clearOfflineOrdeBusyCnt = 0;
+bool    isAutoOrder = false;
 
 typedef struct {
     Type_ModelSts_Def       localSts;           //本地点位状态
@@ -47,6 +47,13 @@ typedef struct {
 static Type_AppInfo_Def     appModule = {0};    //app点位信息
 
 typedef struct {
+    bool                    isOnlineOrder;      //是否是线上启动的订单
+    bool                    isParkingOk;        //是否停好车
+    bool                    isOrderStarted;     //订单是否已经启动
+    uint32_t                numberId;           //订单编号
+} Type_OrderInfo_Def;
+
+typedef struct {
     bool                    isFirstPowerOn;
     Type_ServiceState_Enum 	state;			    //运行状态
     Type_ServiceState_Enum 	lastState;
@@ -55,9 +62,8 @@ typedef struct {
     // Type_ProcStep_Enum      washExeStep;        //当前执行的洗车步骤
     bool                    isFirstSwitch;
     bool                    isWarningErr;       //是否发生了警告错误
-    bool                    isOnlineOrder;      //是否是线上订单
     bool                    isGetStartCmd;      //是否收到了洗车指令
-    uint32_t                orderNumber[MAX_QUEUE_ORDER_NUMBER];    //存储订单编号
+    Type_OrderInfo_Def      orderQueue[MAX_QUEUE_ORDER_NUMBER + 1];    //存储订单编号（最后一个数组成员用于订单消耗清除，永远为0，不允许赋值）
     uint64_t                pauseTimeStamp;     //暂停的时间戳
     uint64_t                servicePauseT;      //暂停时间计时
 } Type_WashStaInfo_Def;
@@ -897,8 +903,7 @@ void model_cmd_executed_thread(void *arg)
         case CMD_WASH_FALG_1:
             if(true == appModule.localCmd.washFlag1){
                 if(STA_IDLE == wash.state || STA_RUN == wash.state){
-                    add_new_order(TEST_FALG_1_ORDER_NUM);
-                    wash.isOnlineOrder = false;
+                    add_new_order(TEST_FALG_1_ORDER_NUM, false);
                 }
                 else{
                     if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_wash_flag_1", 0);
@@ -908,8 +913,7 @@ void model_cmd_executed_thread(void *arg)
         case CMD_WASH_FALG_2:
             if(true == appModule.localCmd.washFlag2){
                 if(STA_IDLE == wash.state || STA_RUN == wash.state){
-                    add_new_order(TEST_FALG_2_ORDER_NUM);
-                    wash.isOnlineOrder = false;
+                    add_new_order(TEST_FALG_2_ORDER_NUM, false);
                 }
                 else{
                     if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_wash_flag_2", 0);
@@ -936,8 +940,7 @@ void model_cmd_executed_thread(void *arg)
             break;
         case CMD_NEW_ORDER:
             if(appModule.localCmd.newOrder != 0){
-                add_new_order(appModule.localCmd.newOrder);
-                wash.isOnlineOrder = true;
+                add_new_order(appModule.localCmd.newOrder, true);
             }
             break;
         case CMD_START_WASH:
@@ -975,9 +978,9 @@ void model_cmd_executed_thread(void *arg)
             break;
         case CMD_CANCEL_ORDER:
             //取消当前最新未启动订单
-            for (uint8_t i = 0; i < MAX_QUEUE_ORDER_NUMBER - 1; i++)
+            for (uint8_t i = 0; i < MAX_QUEUE_ORDER_NUMBER; i++)
             {
-                wash.orderNumber[i] = wash.orderNumber[i + 1];
+                memcpy(&wash.orderQueue[i], &wash.orderQueue[i + 1], sizeof(Type_OrderInfo_Def));
             }
             if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_cancel_order", 0);
             break;
@@ -1172,7 +1175,7 @@ void ready_area_detection_thread(void *arg)
             isCarWantForwardExit = false;
         }
 
-        //出口和完成光电同事触发，认为车已经向前离开，关闭2号闸
+        //出口和完成光电同时触发，认为车已经向前离开，关闭2号闸
         if(isCarWantForwardExit && is_signal_filter_trigger(SIGNAL_EXIT) && is_signal_filter_trigger(SIGNAL_FINISH)){
             gate_change_state(CRL_SECTION_2, GATE_CLOSE);
             isCarWantForwardExit = false;
@@ -1183,13 +1186,10 @@ void ready_area_detection_thread(void *arg)
         if(is_signal_filter_trigger(SIGNAL_LEFT_SKEW) || is_signal_filter_trigger(SIGNAL_RIGHT_SKEW) || is_signal_filter_trigger(SIGNAL_STOP)){
             carInfo.isCarInReadyArea = true;
             carOutReadyAreaTimeStamp = aos_now_ms();
-            if(!is_signal_filter_trigger(SIGNAL_ALL_IN)){
+            if(!is_signal_filter_trigger(SIGNAL_ALL_IN) && !is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT)){
                 if(is_dev_move_sta_idle(GATE_1_MACH_ID) && !is_signal_filter_trigger(SIGNAL_GATE_1_CLOSE)){
                     gate_change_state(CRL_SECTION_1, GATE_CLOSE);
                 }
-            }
-            else if(!is_dev_move_sta_idle(GATE_1_MACH_ID)){
-                gate_change_state(CRL_SECTION_1, GATE_STOP);
             }
         }
         //长时间没有触发预备区的光电则认为没有车在预备区，有订单的话需要重新打开道闸
@@ -1256,7 +1256,7 @@ void ready_area_detection_thread(void *arg)
                     }
                 }
                 if(0 == carInfo.voiceCnt 
-                || (get_diff_ms(carInfo.parkStaStartT) > 10000 && carInfo.voiceCnt < 2)){     //限制语音播报时间和次数
+                || (get_diff_ms(carInfo.parkStaStartT) > 10000 && carInfo.voiceCnt < 1)){     //限制语音播报时间和次数
                     carInfo.voiceCnt++;
                     if(longCarTryCnt < 3){
                         voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_FORWARD);
@@ -1285,7 +1285,7 @@ void ready_area_detection_thread(void *arg)
             else{                                                                   //仅停车光电触发，说明停好车
                 if(PARK_OK != carInfo.parkState){
                     carInfo.voiceCnt = 0;
-                    xp_ag_osal_get()->screen.display((get_is_allow_next_car_wash_flag() && wash.orderNumber[0] != 0) ? AG_CAR_READY_TRANSFER : AG_CAR_STOP);
+                    xp_ag_osal_get()->screen.display((get_is_allow_next_car_wash_flag() && wash.orderQueue[0].numberId != 0) ? AG_CAR_READY_TRANSFER : AG_CAR_STOP);
                     carInfo.parkOkTimeStamp = aos_now_ms();
                 }
                 // else if(get_is_allow_next_car_wash_flag() && get_diff_ms(carInfo.parkOkTimeStamp) > 18000){
@@ -1293,7 +1293,7 @@ void ready_area_detection_thread(void *arg)
                 // }
                 // if(get_is_allow_next_car_wash_flag()){
                     if(0 == carInfo.voiceCnt
-                    || (get_diff_ms(carInfo.parkStaStartT) > 15000 && carInfo.voiceCnt < 3)){
+                    || (get_diff_ms(carInfo.parkStaStartT) > 15000 && carInfo.voiceCnt < 1)){
                         carInfo.voiceCnt++;
                         voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_STOP);
                         carInfo.parkStaStartT = aos_now_ms();
@@ -1314,7 +1314,7 @@ void ready_area_detection_thread(void *arg)
                     voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_FORWARD);
                     carInfo.parkStaStartT = aos_now_ms();
                 }
-                if(carInfo.voiceCnt > 2){
+                if(carInfo.voiceCnt > 1){
                     isPlayForwardVoice = false;
                 }
             }
@@ -1331,7 +1331,7 @@ void ready_area_detection_thread(void *arg)
             }
         }
         else if(!carInfo.isCarInReadyArea){     //没车在预备区的话根据有无订单切换道闸开关
-            if(wash.orderNumber[0] != 0){
+            if(wash.orderQueue[0].numberId != 0){
                 if(is_dev_move_sta_idle(GATE_1_MACH_ID) && !is_signal_filter_trigger(SIGNAL_GATE_1_OPEN)){
                     gate_change_state(CRL_SECTION_1, GATE_OPEN);
                 }
@@ -1427,7 +1427,7 @@ static int xp_service_set_state(Type_ServiceState_Enum state)
             osal_set_dev_limit_mode(BACK_LEFT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, 110);
             osal_set_dev_limit_mode(BACK_RIGHT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, 110);
             //异常停止后清除所有订单
-            memset(wash.orderNumber, 0, sizeof(wash.orderNumber));
+            memset(wash.orderQueue, 0, sizeof(wash.orderQueue));
         }
         else{
             osal_set_dev_limit_mode(BACK_LEFT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, 60);
@@ -1454,21 +1454,25 @@ static int xp_service_set_state(Type_ServiceState_Enum state)
 /**
  * @brief       增加新订单
  * @param[in]	orderNum            
+ * @param[in]	isOnline            
  * @return      int                 
  */
-int add_new_order(int orderNum)
+int add_new_order(int orderNum, bool isOnline)
 {
     uint8_t i = 0;
     if(orderNum != 0){
         for (i = 0; i < MAX_QUEUE_ORDER_NUMBER; i++)
         {
-            if(0 == wash.orderNumber[i]){
-                wash.orderNumber[i] = orderNum;
-                LOG_UPLOAD("Currently %d orders have been accumulated", i + 1);
+            if(0 == wash.orderQueue[i].numberId){
+                wash.orderQueue[i].isOnlineOrder = isOnline;
+                wash.orderQueue[i].isParkingOk = false;
+                wash.orderQueue[i].isOrderStarted = false;
+                wash.orderQueue[i].numberId = orderNum;
+                LOG_UPLOAD("Add order ID <%d>, currently %d orders have been accumulated", orderNum, i + 1);
                 break;
             }
         }
-        if(i >= 3) LOG_UPLOAD("Order too much add failed, MAX %d", MAX_QUEUE_ORDER_NUMBER);
+        if(i >= MAX_QUEUE_ORDER_NUMBER) LOG_UPLOAD("Order too much, add id <%d> failed, MAX %d", orderNum, MAX_QUEUE_ORDER_NUMBER);
         else return 0;
     }
     else{
@@ -1484,14 +1488,15 @@ int add_new_order(int orderNum)
  */
 static int xp_service_start_wash_ready(Type_ServiceState_Enum state)
 {
-    // //连续洗测试
-    // if(++kvService.order.offlineStartNum > 9999999)   kvService.order.offlineStartNum = 0;
-    // kvService.order.isNewOfflineOrderSave = true;
-    // appModule.localSts.washInfo.offlineOrderNum = wash.washMode*110000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
-    // add_new_order(appModule.localSts.washInfo.offlineOrderNum);
-    // wash.isOnlineOrder = false;
+    //连续洗测试
+    if(isAutoOrder){
+        if(++kvService.order.offlineStartNum > 9999999)   kvService.order.offlineStartNum = 0;
+        kvService.order.isNewOfflineOrderSave = true;
+        appModule.localSts.washInfo.offlineOrderNum = wash.washMode*110000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
+        add_new_order(appModule.localSts.washInfo.offlineOrderNum, false);
+    }
 
-    LOG_INFO("Device start wash");
+    LOG_INFO("Device start wash, ID <%d>", wash.orderQueue[0].numberId);
     osal_dev_io_state_change(BOARD5_OUTPUT_MACHINE_IDEL, IO_ENABLE);
     clearOfflineOrdeBusyCnt = 0;
     err_need_flag_handle()->isDetectBrushCroooked = true;
@@ -1504,12 +1509,12 @@ static int xp_service_start_wash_ready(Type_ServiceState_Enum state)
     carInfo.isCarInReadyArea = false;
     kvService.order.isNewOrder = true;
     if(0 == appModule.localSts.order1.orderNumber){
-        appModule.localSts.order1.orderNumber = wash.orderNumber[0];
+        appModule.localSts.order1.orderNumber = wash.orderQueue[0].numberId;
         if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_wash_flag_1", 1);
         set_new_order_car_id(1);
     }
     else if(0 == appModule.localSts.order2.orderNumber){
-        appModule.localSts.order2.orderNumber = wash.orderNumber[0];
+        appModule.localSts.order2.orderNumber = wash.orderQueue[0].numberId;
         if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_wash_flag_2", 1);
         set_new_order_car_id(2);
     }
@@ -1521,9 +1526,9 @@ static int xp_service_start_wash_ready(Type_ServiceState_Enum state)
     if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_new_order", 0);
     
     //启动后消耗当前订单号
-    for (uint8_t i = 0; i < MAX_QUEUE_ORDER_NUMBER - 1; i++)
+    for (uint8_t i = 0; i < MAX_QUEUE_ORDER_NUMBER; i++)
     {
-        wash.orderNumber[i] = wash.orderNumber[i + 1];
+        memcpy(&wash.orderQueue[i], &wash.orderQueue[i + 1], sizeof(Type_OrderInfo_Def));
     }
     return 0;
 }
@@ -1546,8 +1551,7 @@ static void offline_payment_callback(uint8_t washMode)
     if(++kvService.order.offlineStartNum > 9999999)   kvService.order.offlineStartNum = 0;
     kvService.order.isNewOfflineOrderSave = true;
     appModule.localSts.washInfo.offlineOrderNum = wash.washMode*100000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
-    add_new_order(appModule.localSts.washInfo.offlineOrderNum);
-    wash.isOnlineOrder = false;
+    add_new_order(appModule.localSts.washInfo.offlineOrderNum, false);
 }
 
 #define BUTTOM_NUM      6               //物理按键个数
@@ -1584,8 +1588,7 @@ static void check_button(void)
                     if(++kvService.order.offlineStartNum > 9999999)   kvService.order.offlineStartNum = 0;
                     kvService.order.isNewOfflineOrderSave = true;
                     appModule.localSts.washInfo.offlineOrderNum = wash.washMode*100000000 + 10000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
-                    add_new_order(appModule.localSts.washInfo.offlineOrderNum);
-                    wash.isOnlineOrder = false;
+                    add_new_order(appModule.localSts.washInfo.offlineOrderNum, false);
                 }
                 else if(BUTTON_STOP_WASH == i){
                     xp_service_set_state(STA_STOP);
@@ -1615,6 +1618,7 @@ void xp_service_thread(void* arg)
     uint64_t voiceTimeStamp = 0;
     uint8_t voiceCnt = 0;
     uint8_t signalTriggerCnt = 0;
+    uint64_t devIdelStaTimeStamp = 0;
     bool isAutoResetDev = false;
     bool isCarBeReady = false;
     bool startWashFlag = false;
@@ -1629,8 +1633,8 @@ void xp_service_thread(void* arg)
         if(appModule.localCmd.func.enableManualMode) check_button();
         //识别当前是否可以启动新订单车辆
         if(get_is_allow_next_car_wash_flag()){
-            if(carInfo.isAllowToWash && wash.orderNumber[0] != 0){  //车辆停车位置准确后等待一段时间后启动
-                if(wash.isOnlineOrder){              //线上订单等待用户点击启动后开始洗车
+            if(carInfo.isAllowToWash && wash.orderQueue[0].numberId != 0){  //车辆停车位置准确后等待一段时间后启动
+                if(wash.orderQueue[0].isOnlineOrder){   //线上订单等待用户点击启动后开始洗车
                     if(wash.isGetStartCmd){
                         startWashFlag = true;
                     }
@@ -1640,7 +1644,7 @@ void xp_service_thread(void* arg)
                         isCarBeReady = true;
                         carBeReadyTimeStamp = aos_now_ms();
                     }
-                    else if(get_diff_ms(carBeReadyTimeStamp) > 5000){
+                    else if(get_diff_ms(carBeReadyTimeStamp) > 3000){
                         startWashFlag = true;
                     }
                 }
@@ -1699,9 +1703,10 @@ void xp_service_thread(void* arg)
                 osal_dev_io_state_change(BOARD5_OUTPUT_SIGNAL_LAMP_RED,     IO_DISABLE);
                 osal_dev_io_state_change(BOARD5_OUTPUT_SIGNAL_LAMP_YELLOW,  IO_DISABLE);
                 set_is_allow_next_car_wash_flag(true);
-                set_error_state(8126, false);
+                // set_error_state(8126, false);
                 clearOfflineOrdeBusyCnt = 0;
                 osal_dev_io_state_change(BOARD5_OUTPUT_MACHINE_IDEL, IO_ENABLE);
+                devIdelStaTimeStamp = aos_now_ms();
             }
 
             if(++clearOfflineOrdeBusyCnt == 100){
@@ -1826,12 +1831,13 @@ void xp_service_thread(void* arg)
                     voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_SILENCE);
                     xp_service_set_state(STA_IDLE);
 
-                    // //连续洗测试
-                    // if(++kvService.order.offlineStartNum > 9999999)   kvService.order.offlineStartNum = 0;
-                    // kvService.order.isNewOfflineOrderSave = true;
-                    // appModule.localSts.washInfo.offlineOrderNum = wash.washMode*110000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
-                    // add_new_order(appModule.localSts.washInfo.offlineOrderNum);
-                    // wash.isOnlineOrder = false;
+                    if(isAutoOrder){
+                        //连续洗测试
+                        if(++kvService.order.offlineStartNum > 9999999)   kvService.order.offlineStartNum = 0;
+                        kvService.order.isNewOfflineOrderSave = true;
+                        appModule.localSts.washInfo.offlineOrderNum = wash.washMode*110000000 + kvService.order.offlineStartNum;      //上传订单号（包含洗车模式信息）
+                        add_new_order(appModule.localSts.washInfo.offlineOrderNum, false);
+                    }
                 }
                 else{
                     set_error_state(8101, true);
@@ -1875,7 +1881,8 @@ void xp_service_thread(void* arg)
                 else if(STA_EXCEPTION == wash.state){
                     xp_ag_osal_get()->screen.display(AG_SERVICE_EXCEPTION);
                     voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_WASH_EXCEPTION);
-                    isAutoResetDev = (wash.lastState != STA_RECOVER) ? true : false;
+                    //如果恢复待机后立马报警则不自动归位，避免无法消除的报警导致一直重复在自动归位
+                    isAutoResetDev = (wash.lastState != STA_RECOVER && get_diff_ms(devIdelStaTimeStamp) > 5000) ? true : false;
                 }
             }
 
@@ -2080,8 +2087,7 @@ int xp_service_debug(char* type, char* fun, char* param)
 
     if (strcasecmp(type, "service") == 0) {
         if (strcasecmp(fun, "start") == 0) {
-            add_new_order(TEST_LOCAL_ORDER_NUM);
-            wash.isOnlineOrder = false;
+            add_new_order(TEST_LOCAL_ORDER_NUM, false);
         }
         else if (strcasecmp(fun, "back_home") == 0) {
             if(STA_STOP == wash.state || STA_EXCEPTION == wash.state){
@@ -2109,6 +2115,9 @@ int xp_service_debug(char* type, char* fun, char* param)
             kvService.order.isNewOfflineOrderSave = true;
             kvService.order.isNewOrderSave = true;
 		}
+        else if (strcasecmp(fun, "free") == 0) {
+            isAutoOrder = atoi(param);
+        }
     }
     //清除所有kv值恢复为默认值，除了日期
     else if (strcasecmp(type, "clear_all_kv") == 0){

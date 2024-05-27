@@ -236,7 +236,7 @@ static Type_DriverCmdInfo_Def   priSwCmd[PRI_SWITCH_NUM]    = {0};  //私有开�
 
 static bool isDriverExecuted = false;                   //驱动执行标志
 static bool isSideBrushCantMoveToPose = false;          //侧刷无法到达指定位置标志
-static bool isClearConveyorEncSuccess = false;          //输送带脉冲值清零成功标志
+static bool isClearConveyorEncFinish = false;           //输送带脉冲值清零结束标志
 
 //私有开关信息
 /* osalMatchId ： 驱动机构的索引号 */
@@ -473,11 +473,11 @@ void conveyor_run_crl_thread(void *arg)
         //输送带1#控制
         if(isNewCarReadyWash){                                          //下一辆车正在进入工作区时，若前面没有车，输送带1#，2#一起动，否则，输送带1#跟随2#启停
             /* 洗车的时候可能会超时清不成功，这里后面尝试在不洗车的时候清 */
-            if(!isClearConveyorEncSuccess){
+            if(!isClearConveyorEncFinish){
                 uint32_t workAreaConveyorEnc = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
-                //多次清除无效后就不清了，下次再清，洗车流程里，这里会一直等待 isClearConveyorEncSuccess 为true，所以这里等待时间不宜过长
+                //多次清除无效后就不清了，下次再清，洗车流程里，这里会一直等待 isClearConveyorEncFinish 为true，所以这里等待时间不宜过长
                 if(workAreaConveyorEnc < 50 || encClearCnt++ > 20){     //扫码启动后，若码盘值较大，则清零，避免溢出（清除时，输送待可能在动，所以这里给到一定余量）
-                    isClearConveyorEncSuccess = true;                   //清零成功后再动作输送带
+                    isClearConveyorEncFinish = true;                    //清零结束后再动作输送带
                     char *tempBuf = aos_malloc(50);
                     char *valueBuf = aos_malloc(50 * SUPPORT_WASH_NUM_MAX);
                     memset(tempBuf, 0, 50);
@@ -577,7 +577,7 @@ void conveyor_run_crl_thread(void *arg)
         else{
             exitNotTriggerTimeStamp = aos_now_ms();
             if(isExitSignalTrigger){
-                //离开出口光电时，输送带3如果是停的那认为车已经完全越过工作区，不再进行输送
+                //离开出口光电时，输送带3如果是停的, 那认为车已经完全越过工作区，不再进行输送
                 if(is_dev_move_sta_idle(CONVEYOR_3_MATCH_ID)){
                     isExitSignalTrigger = false;
                     carWash[headWashCarId].isCarMoveCompleteArea = false;
@@ -1076,7 +1076,7 @@ static int module_dev_reset(Type_ZeroCheckType_Def *devType)
             osal_dev_io_state_change(BOARD4_OUTPUT_WARNING_BOARD, IO_ENABLE);       //STOP警示牌是边沿触发，这里先置低电平
             if(pC)  strcat(pC,"Gate2# ");
         }
-        LOG_INFO("%sstart reset~~~", pC);
+        LOG_UPLOAD("%sstart reset~~~", pC);
         aos_free(pC);
     }
 
@@ -1350,11 +1350,11 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
                     LOG_DEBUG("Top base current %d, ===Record current %s", brush[BRUSH_TOP].baseCurrent, bufValue);
                     //顶刷控制参数
                     brush[BRUSH_TOP].pressTouchcar  = brush[BRUSH_TOP].baseCurrent  + 8;
-                    brush[BRUSH_TOP].pressL         = brush[BRUSH_TOP].baseCurrent  + 16;      //自由跟随状态下，阈值下限值正常，使吃毛深度合适
-                    brush[BRUSH_TOP].pressL_NoBW    = brush[BRUSH_TOP].baseCurrent  + 20;      //跟随不允许向上，阈值较下限值高，能及时向下贴合车身
+                    brush[BRUSH_TOP].pressL         = brush[BRUSH_TOP].baseCurrent  + 13;      //自由跟随状态下，阈值下限值正常，使吃毛深度合适
+                    brush[BRUSH_TOP].pressL_NoBW    = brush[BRUSH_TOP].baseCurrent  + 15;      //跟随不允许向上，阈值较下限值高，能及时向下贴合车身
                     brush[BRUSH_TOP].pressH_NoFW    = brush[BRUSH_TOP].baseCurrent  + 20;      //跟随不允许向下，阈值较上限值低，不要刷太深
-                    brush[BRUSH_TOP].pressH         = brush[BRUSH_TOP].baseCurrent  + 30;      //自由跟随状态下，阈值上限值偏高，加大阈值范围，防止点头
-                    brush[BRUSH_TOP].pressProtect   = brush[BRUSH_TOP].baseCurrent  + 35;
+                    brush[BRUSH_TOP].pressH         = brush[BRUSH_TOP].baseCurrent  + 22;      //自由跟随状态下，阈值上限值偏高，加大阈值范围，防止点头
+                    brush[BRUSH_TOP].pressProtect   = brush[BRUSH_TOP].baseCurrent  + 50;
                 }
                 else if(BRUSH_SIDE_FRONT == brushType){
                     brush[BRUSH_FRONT_LEFT].baseCurrent = currentSum[BRUSH_FRONT_LEFT] / BRUSH_CALI_READ_CNT;
@@ -1598,7 +1598,7 @@ static int module_side_brush_both_move_to_position(Type_SideBrushPos_Enum pos)
             bothMoveTimeStamp = aos_now_ms();
         }
         if(isBothMoveDone && get_diff_ms(bothMoveTimeStamp) > 1000){             //延迟结束，避免后续调用该接口动作切换太快（保证电机正反转切换停留一段时间）
-            LOG_UPLOAD("module_side_brush_both_move_to_position completed!");
+            LOG_UPLOAD("module_side_brush_both_move_to_position %d completed!", pos);
             moduleSta.isComplete = true;
             return RET_COMPLETE;
         }
@@ -1783,18 +1783,19 @@ int step_dev_wash(uint8_t *completeId)
     static uint8_t voiceCnt = 0;
     static bool isCarIntrude = false;
     static bool isPickupTruck = false;
-    static uint8_t waitOverCnt = 0;
     static uint32_t catrTailTempPos = 0;            //车尾临时值，等待确定后再赋值车尾判定值
     static bool isCarMoveToWash = false;
     static uint32_t recordWorkAreaConveyorEnc = 0;
     static int32_t recordLifterPosValue = 0;
+    uint8_t waitOverCnt = 0;
 
     printCnt++;
     *completeId = 0;        //初始赋值为0，若有完成的订单，赋值完成的车辆Id
     workAreaConveyorEnc = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
 
-    if(!isClearConveyorEncSuccess){
-        if(waitOverCnt++ > 20){                        //这里的时间需要大于清脉冲的超时时间
+    //这里必须等待清脉冲结束在运行流程，否则会造成位置识别错误
+    if(!isClearConveyorEncFinish){
+        if(waitOverCnt++ > 200){            //这里的时间需要大于清脉冲的超时时间
             LOG_UPLOAD("Clear conveyor enc over time");
             return ERR_TIMEOUT;
         }
@@ -1836,7 +1837,7 @@ int step_dev_wash(uint8_t *completeId)
                     carWashTimeStamp[entryCarIndex] = aos_now_ms();
                     isCarIntrude = false;
                     isPickupTruck = false;
-                    set_error_state(8126, false);
+                    // set_error_state(8126, false);
                     recordWorkAreaConveyorEnc = 0;
                     recordLifterPosValue = 0;
                 }
@@ -1866,7 +1867,7 @@ int step_dev_wash(uint8_t *completeId)
         isCarIntrude = true;
         carWash[entryCarIndex].headMoveValue = washProcPos.startTopBrush;     //闯入后偏移闯入车辆位置，认为已经到了洗车顶位置
         LOG_UPLOAD("Have car intrude !");
-        set_error_state(8126, true);
+        // set_error_state(8126, true);
     }
 
     //织带松判定（织带松时输送带停止）
@@ -1989,7 +1990,10 @@ int step_dev_wash(uint8_t *completeId)
             //根据当前车头进入入口光电的距离判定当前处于什么流程（洗车车顶之后的流程不允许按位置距离跳跃）
             if(carWash[i].headProc == PROC_START_WAXWATER && carWash[i].headOffsetPos > washProcPos.startDrying)                        carWash[i].headProc = PROC_START_DYRING;
             else if(carWash[i].headProc == PROC_START_BACK_BRUSH && carWash[i].headOffsetPos > washProcPos.startWaxwater)               carWash[i].headProc = PROC_START_WAXWATER;
-            else if(carWash[i].headProc == PROC_START_FRONT_BRUSH && carWash[i].headOffsetPos > washProcPos.startBackBrush)             carWash[i].headProc = PROC_START_BACK_BRUSH;
+            else if(carWash[i].headProc == PROC_START_FRONT_BRUSH && carWash[i].headOffsetPos > washProcPos.startBackBrush
+            && (1 == washCarNum || (washCarNum > 1 && carWash[headWashCarId].isBackBrushFinish))){                  //多辆车时后车必需等待前车洗完车尾再开始流程
+                carWash[i].headProc = PROC_START_BACK_BRUSH;
+            }
             // 前刷启动的流程用毛刷压力值去判定，不用脉冲值（车在输送带上可能打滑）
             // else if(carWash[i].headProc < PROC_START_FRONT_BRUSH && carWash[i].headOffsetPos > washProcPos.startFrontBrush)carWash[i].headProc = PROC_START_FRONT_BRUSH;
             else if(carWash[i].headProc < PROC_START_TOP_BRUSH && carWash[i].headOffsetPos > washProcPos.startTopBrush)                 carWash[i].headProc = PROC_START_TOP_BRUSH;
@@ -2159,6 +2163,11 @@ int step_dev_wash(uint8_t *completeId)
                     water_system_control(WATER_SHAMPOO_PIKN, true);
                     water_system_control(WATER_SHAMPOO_GREEN, true);
                     water_system_control(WATER_BASE_PLATE, true);
+                }
+                //前轮可能在预备区和工作区输送带间打滑，这里加个超时判定
+                if(get_diff_ms(carWashTimeStamp[i]) - get_diff_ms(carProtectTimeStamp) > 120000){
+                    LOG_UPLOAD("Car head move to front brush over time");
+                    return ERR_TIMEOUT;
                 }
                 break;
             case PROC_START_TOP_BRUSH:              //开始进程洗车顶
@@ -2803,7 +2812,7 @@ void side_brush_follow_thread(void *arg)
                         recordBrushCmdSta[BRUSH_TOP] = CMD_FORWARD;
                         brushMoveTimestamp[BRUSH_TOP] = aos_now_ms();
                         filterCnt[BRUSH_TOP] = 0;
-                        brush[BRUSH_TOP].isJogMove ? lifter_move_time(CMD_FORWARD, (BRUSH_FOLLOW_NO_BACKWARD == brush[BRUSH_TOP].runMode) ? 500 : 300) : lifter_move(CMD_FORWARD, true);
+                        brush[BRUSH_TOP].isJogMove ? lifter_move_time(CMD_FORWARD, (BRUSH_FOLLOW_NO_BACKWARD == brush[BRUSH_TOP].runMode) ? 400 : 300) : lifter_move(CMD_FORWARD, true);
                         LOG_INFO("Top current %d is low, forward", brush[BRUSH_TOP].current);
                     }
                 }
@@ -3359,7 +3368,7 @@ void set_step_pause_time(uint64_t value)
 void set_new_car_ready_wash_falg(bool value)
 {
     isNewCarReadyWash = value;
-    isClearConveyorEncSuccess = false;
+    if(true == value) isClearConveyorEncFinish = false;
 }
 
 bool get_new_car_ready_wash_falg(void)

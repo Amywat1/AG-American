@@ -246,7 +246,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
     },
 
     //负责位移的电机（接触器驱动）
-    [9] = {                             //左前刷移动
+    [9] = {                             //左前刷移动（美版为变频器按照接触器的方式用）
         .actionType     = ACTION_TYPE_MOVE,
         .drvIndex       = FRONT_LEFT_MOVE_MATCH_ID,
         .drvType        = DRIVER_TYPE_KM,
@@ -267,7 +267,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
         .moveInfo.ioIndexLimitCW   = BOARD2_INPUT_FRONT_LEFT_BRUSH_DOWN,
         .moveInfo.ioIndexLimitCCW  = BOARD2_INPUT_FRONT_LEFT_MOVE_ZERO,
     },
-    [10] = {                            //右前刷移动
+    [10] = {                            //右前刷移动（美版为变频器按照接触器的方式用）
         .actionType     = ACTION_TYPE_MOVE,
         .drvIndex       = FRONT_RIGHT_MOVE_MATCH_ID,
         .drvType        = DRIVER_TYPE_KM,
@@ -288,7 +288,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
         .moveInfo.ioIndexLimitCW   = BOARD2_INPUT_FRONT_RIGHT_BRUSH_DOWN,
         .moveInfo.ioIndexLimitCCW  = BOARD2_INPUT_FRONT_RIGHT_MOVE_ZERO,
     },
-    [11] = {                            //左后刷移动
+    [11] = {                            //左后刷移动（美版为变频器按照接触器的方式用）
         .actionType     = ACTION_TYPE_MOVE,
         .drvIndex       = BACK_LEFT_MOVE_MATCH_ID,
         .drvType        = DRIVER_TYPE_KM,
@@ -309,7 +309,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
         .moveInfo.ioIndexLimitCW   = BOARD2_INPUT_BACK_LEFT_BRUSH_DOWN,
         .moveInfo.ioIndexLimitCCW  = BOARD2_INPUT_BACK_LEFT_MOVE_ZERO,
     },
-    [12] = {                             //右后刷移动
+    [12] = {                             //右后刷移动（美版为变频器按照接触器的方式用）
         .actionType     = ACTION_TYPE_MOVE,
         .drvIndex       = BACK_RIGHT_MOVE_MATCH_ID,
         .drvType        = DRIVER_TYPE_KM,
@@ -519,9 +519,9 @@ static Type_Lnovance_Def Lnovance_Table[] = {
     [7].com.speed    = 9600,
     [7].isInitOk     = false,
 
-    [7].DI1.boardId = BOARD_NULL,                                       [7].DI1.pinId = IO_NULL,
-    [7].DI2.boardId = BOARD_ID_RESOLUTION(BOARD4_OUTPUT_TOP_ROTATION),  [7].DI2.pinId = PIN_ID_RESOLUTION(BOARD4_OUTPUT_TOP_ROTATION),
-    [7].DI3.boardId = BOARD_NULL,                                       [7].DI3.pinId = IO_NULL,
+    [7].DI1.boardId = BOARD_NULL,                                               [7].DI1.pinId = IO_NULL,
+    [7].DI2.boardId = BOARD_ID_RESOLUTION(BOARD4_OUTPUT_TOP_ROTATION),          [7].DI2.pinId = PIN_ID_RESOLUTION(BOARD4_OUTPUT_TOP_ROTATION),
+    [7].DI3.boardId = BOARD_ID_RESOLUTION(BOARD5_OUTPUT_TOP_ROTATION_RESET),    [7].DI3.pinId = PIN_ID_RESOLUTION(BOARD5_OUTPUT_TOP_ROTATION_RESET),
 
     //顶刷升降
     [8].com.slave_id = 6,
@@ -532,6 +532,76 @@ static Type_Lnovance_Def Lnovance_Table[] = {
     [8].DI1.boardId = BOARD_ID_RESOLUTION(BOARD4_OUTPUT_LIFTER_CW),     [8].DI1.pinId = PIN_ID_RESOLUTION(BOARD4_OUTPUT_LIFTER_CW),
     [8].DI2.boardId = BOARD_ID_RESOLUTION(BOARD4_OUTPUT_LIFTER_CCW),    [8].DI2.pinId = PIN_ID_RESOLUTION(BOARD4_OUTPUT_LIFTER_CCW),
     [8].DI3.boardId = BOARD_ID_RESOLUTION(BOARD4_OUTPUT_LIFTER_RESET),  [8].DI3.pinId = PIN_ID_RESOLUTION(BOARD4_OUTPUT_LIFTER_RESET),
+
+    //左前刷移动
+    [9].com.slave_id = 10,
+    [9].com.port     = 1,
+    [9].com.speed    = 9600,
+    [9].isInitOk     = false,
+
+    [9].DI1.boardId = BOARD_ID_RESOLUTION(BOARD2_OUTPUT_FRONT_LEFT_CLOSE),      [9].DI1.pinId = PIN_ID_RESOLUTION(BOARD2_OUTPUT_FRONT_LEFT_CLOSE),
+    [9].DI2.boardId = BOARD_ID_RESOLUTION(BOARD2_OUTPUT_FRONT_LEFT_OPEN),       [9].DI2.pinId = PIN_ID_RESOLUTION(BOARD2_OUTPUT_FRONT_LEFT_OPEN),
+    [9].DI3.boardId = BOARD_ID_RESOLUTION(BOARD2_OUTPUT_FRONT_LEFT_MOVE_RESET), [9].DI3.pinId = PIN_ID_RESOLUTION(BOARD2_OUTPUT_FRONT_LEFT_MOVE_RESET),
+
+    //右前刷移动
+    [10].com.slave_id = 11,
+    [10].com.port     = 1,
+    [10].com.speed    = 9600,
+    [10].isInitOk     = false,
+
+    [10].DI1.boardId = BOARD_ID_RESOLUTION(BOARD2_OUTPUT_FRONT_RIGHT_CLOSE),        [10].DI1.pinId = PIN_ID_RESOLUTION(BOARD2_OUTPUT_FRONT_RIGHT_CLOSE),
+    [10].DI2.boardId = BOARD_ID_RESOLUTION(BOARD2_OUTPUT_FRONT_RIGHT_OPEN),         [10].DI2.pinId = PIN_ID_RESOLUTION(BOARD2_OUTPUT_FRONT_RIGHT_OPEN),
+    [10].DI3.boardId = BOARD_ID_RESOLUTION(BOARD2_OUTPUT_FRONT_RIGHT_MOVE_RESET),   [10].DI3.pinId = PIN_ID_RESOLUTION(BOARD2_OUTPUT_FRONT_RIGHT_MOVE_RESET),
+
+    //左后刷移动
+    [11].com.slave_id = 12,
+    [11].com.port     = 1,
+    [11].com.speed    = 9600,
+    [11].isInitOk     = false,
+
+    [11].DI1.boardId = BOARD_ID_RESOLUTION(BOARD2_OUTPUT_BACK_LEFT_CLOSE),          [11].DI1.pinId = PIN_ID_RESOLUTION(BOARD2_OUTPUT_BACK_LEFT_CLOSE),
+    [11].DI2.boardId = BOARD_ID_RESOLUTION(BOARD2_OUTPUT_BACK_LEFT_OPEN),           [11].DI2.pinId = PIN_ID_RESOLUTION(BOARD2_OUTPUT_BACK_LEFT_OPEN),
+    [11].DI3.boardId = BOARD_ID_RESOLUTION(BOARD2_OUTPUT_BACK_LEFT_MOVE_RESET),     [11].DI3.pinId = PIN_ID_RESOLUTION(BOARD2_OUTPUT_BACK_LEFT_MOVE_RESET),
+
+    //右后刷移动
+    [12].com.slave_id = 13,
+    [12].com.port     = 1,
+    [12].com.speed    = 9600,
+    [12].isInitOk     = false,
+
+    [12].DI1.boardId = BOARD_ID_RESOLUTION(BOARD2_OUTPUT_BACK_RIGHT_CLOSE),         [12].DI1.pinId = PIN_ID_RESOLUTION(BOARD2_OUTPUT_BACK_RIGHT_CLOSE),
+    [12].DI2.boardId = BOARD_ID_RESOLUTION(BOARD2_OUTPUT_BACK_RIGHT_OPEN),          [12].DI2.pinId = PIN_ID_RESOLUTION(BOARD2_OUTPUT_BACK_RIGHT_OPEN),
+    [12].DI3.boardId = BOARD_ID_RESOLUTION(BOARD2_OUTPUT_BACK_RIGHT_MOVE_RESET),    [12].DI3.pinId = PIN_ID_RESOLUTION(BOARD2_OUTPUT_BACK_RIGHT_MOVE_RESET),
+
+    //摆动喷淋
+    [13].com.slave_id = 14,
+    [13].com.port     = 1,
+    [13].com.speed    = 9600,
+    [13].isInitOk     = false,
+
+    [13].DI1.boardId = BOARD_ID_RESOLUTION(BOARD4_OUTPUT_TOP_SWING),        [13].DI1.pinId = PIN_ID_RESOLUTION(BOARD4_OUTPUT_TOP_SWING),
+    [13].DI2.boardId = BOARD_ID_RESOLUTION(BOARD5_OUTPUT_TOP_SWING_CCW),    [13].DI2.pinId = PIN_ID_RESOLUTION(BOARD5_OUTPUT_TOP_SWING_CCW),
+    [13].DI3.boardId = BOARD_ID_RESOLUTION(BOARD5_OUTPUT_TOP_SWING_RESET),  [13].DI3.pinId = PIN_ID_RESOLUTION(BOARD5_OUTPUT_TOP_SWING_RESET),
+
+    //左前群刷
+    [14].com.slave_id = 15,
+    [14].com.port     = 1,
+    [14].com.speed    = 9600,
+    [14].isInitOk     = false,
+
+    [14].DI1.boardId = BOARD_ID_RESOLUTION(BOARD4_OUTPUT_LEFT_SKIRT_ROTATION),  [14].DI1.pinId = PIN_ID_RESOLUTION(BOARD4_OUTPUT_LEFT_SKIRT_ROTATION),
+    [14].DI2.boardId = BOARD_NULL,                                              [14].DI2.pinId = IO_NULL,
+    [14].DI3.boardId = BOARD_NULL,                                              [14].DI3.pinId = IO_NULL,
+
+    //右前群刷
+    [15].com.slave_id = 16,
+    [15].com.port     = 1,
+    [15].com.speed    = 9600,
+    [15].isInitOk     = false,
+
+    [15].DI1.boardId = BOARD_ID_RESOLUTION(BOARD4_OUTPUT_RIGHT_SKIRT_ROTATION), [15].DI1.pinId = PIN_ID_RESOLUTION(BOARD4_OUTPUT_RIGHT_SKIRT_ROTATION),
+    [15].DI2.boardId = BOARD_NULL,                                              [15].DI2.pinId = IO_NULL,
+    [15].DI3.boardId = BOARD_NULL,                                              [15].DI3.pinId = IO_NULL,
 };
 
 /* //温度传感器列表
@@ -783,7 +853,7 @@ static int xp_osal_freq_get_current(int index)
 {
     int16_t current = 0;
 
-    if(0 == aos_mutex_lock(&rs485_1_mux, 100)){
+    if(0 == aos_mutex_lock(&rs485_1_mux, 500)){
         for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
         {
             if (DRIVER_TYPE_VFD_LNOVANCE == MotorDev_Table[i].drvType && index == MotorDev_Table[i].drvIndex) {
@@ -805,9 +875,9 @@ static int xp_osal_freq_get_current(int index)
  */
 static uint16_t xp_osal_freq_get_state(int index)
 {
-    uint16_t state = 0;
+    uint16_t state = 0xFFFF;
 
-    if(0 == aos_mutex_lock(&rs485_1_mux, 100)){
+    if(0 == aos_mutex_lock(&rs485_1_mux, 300)){
         for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
         {
             if (DRIVER_TYPE_VFD_LNOVANCE == MotorDev_Table[i].drvType && index == MotorDev_Table[i].drvIndex) {
@@ -829,16 +899,16 @@ static uint16_t xp_osal_freq_get_state(int index)
  */
 static uint32_t xp_osal_freq_get_error(int index)
 {
-    uint32_t errCode = 0;
+    uint32_t errCode = 0xFFFFFFFF;
 
-    if(0 == aos_mutex_lock(&rs485_1_mux, 100)){
-    for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
-    {
-        if (DRIVER_TYPE_VFD_LNOVANCE == MotorDev_Table[i].drvType && index == MotorDev_Table[i].drvIndex) {
-            if (false == xp_lnovance_get_error_code(MotorDev_Table[i].matchVfdRegNum, &errCode)) {
-                errCode = 0xFFFFFFFF;
-            }
-            break;
+    if(0 == aos_mutex_lock(&rs485_1_mux, 500)){
+        for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
+        {
+            if (DRIVER_TYPE_VFD_LNOVANCE == MotorDev_Table[i].drvType && index == MotorDev_Table[i].drvIndex) {
+                if (false == xp_lnovance_get_error_code(MotorDev_Table[i].matchVfdRegNum, &errCode)) {
+                    errCode = 0xFFFFFFFF;
+                }
+                break;
             }
         }
     }
@@ -855,7 +925,7 @@ static int xp_osal_freq_clear_error(int index)
 {
     int ret = -1;
 
-    if(0 == aos_mutex_lock(&rs485_1_mux, 100)){
+    if(0 == aos_mutex_lock(&rs485_1_mux, 500)){
         for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
         {
             if (DRIVER_TYPE_VFD_LNOVANCE == MotorDev_Table[i].drvType && index == MotorDev_Table[i].drvIndex) {
@@ -1298,8 +1368,8 @@ Type_SignalStaInfo_Def SignalInfo_Table[] = {
     {SIGNAL_ENTRANCE,           BOARD4_INPUT_ENTRANCE_SIGNAL,           SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_REAR_END_PROTECT,   BOARD0_INPUT_SIGNAL_REAR_END_PROTECT,   SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_AVOID_INTRUDE,      BOARD4_INPUT_AVOID_INTRUDE_SIGNAL,      SIGNAL_STABLE,  20,   0,  0},
-    {SIGNAL_EXIT,               BOARD0_INPUT_SIGNAL_EXIT,               SIGNAL_STABLE,  20,   0,  0},
-    {SIGNAL_FINISH,             BOARD0_INPUT_SIGNAL_FINISH,             SIGNAL_STABLE,  20,   0,  0},
+    {SIGNAL_EXIT,               BOARD0_INPUT_SIGNAL_EXIT,               SIGNAL_STABLE,  25,   0,  0},
+    {SIGNAL_FINISH,             BOARD0_INPUT_SIGNAL_FINISH,             SIGNAL_STABLE,  25,   0,  0},
     {SIGNAL_LIFTER_UP,          BOARD4_INPUT_LIFTER_UP,                 SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_LIFTER_DOWN,        BOARD4_INPUT_LIFTER_DOWN,               SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_FL_BRUSH_DOWN,      BOARD2_INPUT_FRONT_LEFT_BRUSH_DOWN,     SIGNAL_STABLE,  20,   0,  0},
@@ -1337,6 +1407,7 @@ Type_SignalStaInfo_Def SignalInfo_Table[] = {
     {SIGNAL_WASH_MODE_2,        BOARD5_INPUT_WASH_MODE_2,               SIGNAL_STABLE,  5,    0,  0},
     {SIGNAL_WASH_MODE_3,        BOARD5_INPUT_WASH_MODE_3,               SIGNAL_STABLE,  5,    0,  0},
     {SIGNAL_WASH_MODE_4,        BOARD5_INPUT_WASH_MODE_4,               SIGNAL_STABLE,  5,    0,  0},
+    {SIGNAL_GATE_1_PROTECT,     BOARD5_INPUT_SIGNAL_GATE_1_PROTECT,     SIGNAL_STABLE,  5,    0,  0},
 };
 
 /**
@@ -1480,6 +1551,7 @@ bool is_signal_filter_trigger(Type_SignalType_Enum type)
 {
     //对射类光电正常电平状态为0，遮挡后为1认为触发了
     if(SIGNAL_GROUND == type
+    || SIGNAL_GATE_1_PROTECT == type
     || SIGNAL_ALL_IN == type
     // || SIGNAL_LEFT_SKEW == type
     // || SIGNAL_RIGHT_SKEW == type
@@ -1821,7 +1893,8 @@ static bool is_dev_limit_touched(Type_MotorInfo_Def* const pMotor)
         else{
             //道闸有多个不允许执行关闭的限位信号，在这里特殊处理
             if(GATE_1_MACH_ID == pMotor->drvIndex){
-                if(is_signal_filter_trigger(SIGNAL_ALL_IN)){
+                if(is_signal_filter_trigger(SIGNAL_ALL_IN)
+                || is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT)){
                 // || is_signal_filter_trigger(SIGNAL_GROUND)){
                     return true;
                 }else{}//继续判断限位

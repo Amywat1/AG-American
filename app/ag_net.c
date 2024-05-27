@@ -242,6 +242,8 @@ void xp_iot_data_register_thread(void *arg)
     err &= IOT_ADD_PROPERTY_NODE("sts_gate_close_2",	        localModelSts->washInfo.gateCloseDone2, TYPE_Bool,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_car_too_long",	        localModelSts->washInfo.carTooLong,     TYPE_Bool,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_car_too_high",	        localModelSts->washInfo.carTooHigh,     TYPE_Bool,	0,	0);
+    // err &= IOT_ADD_PROPERTY_NODE("sts_car_start_wash",	        localModelSts->washInfo.carStartWash,   TYPE_Bool,	0,	0);
+    // err &= IOT_ADD_PROPERTY_NODE("sts_car_finish_wash",	        localModelSts->washInfo.carFinishWash,  TYPE_Bool,	0,	0);
     //洗车机状态
     err &= IOT_ADD_PROPERTY_NODE("sts_stopping",	            localModelSts->devSta.stopping,         TYPE_Bool,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_standby",	                localModelSts->devSta.standby,          TYPE_Bool,	0,	0);

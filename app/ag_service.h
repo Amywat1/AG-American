@@ -59,6 +59,8 @@ typedef struct{
     bool                gateCloseDone2;
     bool                carTooLong;
     bool                carTooHigh;
+    bool                carStartWash;
+    bool                carFinishWash;
 } Type_ModelSts_WashInfo_Def;
 
 //状态点位——洗车机状态
