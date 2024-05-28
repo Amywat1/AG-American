@@ -2316,7 +2316,8 @@ int step_dev_wash(uint8_t *completeId)
                 else if(carWash[i].tailProc < PROC_FINISH_HIGH_PUMP && carWash[i].tailOffsetPos > washProcPos.endHighPump)      carWash[i].tailProc = PROC_FINISH_HIGH_PUMP;
 
                 //顶刷在车尾提前取消点动
-                if(brush[BRUSH_TOP].isJogMove && carWash[i].tailOffsetPos > washProcPos.endTopBrush - 50){
+                if(carWash[i].tailProc < PROC_FINISH_TOP_BRUSH 
+                && brush[BRUSH_TOP].isJogMove && carWash[i].tailOffsetPos > washProcPos.endTopBrush - 50){
                     brush[BRUSH_TOP].isJogMove = false;
                 }
                 //侧刷在车尾处提前关闭跟随，一直往里合贴合车尾拐角处

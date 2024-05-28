@@ -267,7 +267,19 @@ static bool check_ag_error(bool isEmc){
     if(0 == vfdFreqCnt++ % (VFD_DETECT_FREQ_TIME/VFD_NUM/ERR_CHECK_SLEEP_TIME)){
         //设备在工作状态或者急停状态不检测变频器通讯相关异常（变频器控制都是用点位控制，通讯只是用于读取报警值还有电流值）
         isDetectVfd = (errNeedFlag.isDevRunSta || isEmc) ? false : true;
-        vfdDetectCnt = (vfdDetectCnt < VFD_NUM - 1) ? ++vfdDetectCnt : 0;
+        //有变频器通讯异常后，一直检测单个变频器通讯，避免通讯不上线程阻塞导致多个变频器通讯检测混乱
+        if(get_error_state(8054))      vfdDetectCnt = TOP_BRUSH_MATCH_ID;
+        else if(get_error_state(8055)) vfdDetectCnt = FRONT_LEFT_BRUSH_MATCH_ID;
+        else if(get_error_state(8056)) vfdDetectCnt = FRONT_RIGHT_BRUSH_MATCH_ID;
+        else if(get_error_state(8057)) vfdDetectCnt = BACK_LEFT_BRUSH_MATCH_ID;
+        else if(get_error_state(8058)) vfdDetectCnt = BACK_RIGHT_BRUSH_MATCH_ID;
+        else if(get_error_state(8064)) vfdDetectCnt = CONVEYOR_1_MATCH_ID;
+        else if(get_error_state(8065)) vfdDetectCnt = CONVEYOR_2_MATCH_ID;
+        else if(get_error_state(8066)) vfdDetectCnt = CONVEYOR_3_MATCH_ID;
+        else if(get_error_state(8066)) vfdDetectCnt = CONVEYOR_3_MATCH_ID;
+        else{
+            vfdDetectCnt = (vfdDetectCnt < VFD_NUM - 1) ? ++vfdDetectCnt : 0;
+        }
     }
     else{
         isDetectVfd = false;

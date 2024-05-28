@@ -853,7 +853,7 @@ static int xp_osal_freq_get_current(int index)
 {
     int16_t current = 0;
 
-    if(0 == aos_mutex_lock(&rs485_1_mux, 500)){
+    if(0 == aos_mutex_lock(&rs485_1_mux, 100)){         //时间不易太长，避免影响其它的vfd电流读取
         for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
         {
             if (DRIVER_TYPE_VFD_LNOVANCE == MotorDev_Table[i].drvType && index == MotorDev_Table[i].drvIndex) {
@@ -877,7 +877,7 @@ static uint16_t xp_osal_freq_get_state(int index)
 {
     uint16_t state = 0xFFFF;
 
-    if(0 == aos_mutex_lock(&rs485_1_mux, 300)){
+    if(0 == aos_mutex_lock(&rs485_1_mux, 500)){
         for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
         {
             if (DRIVER_TYPE_VFD_LNOVANCE == MotorDev_Table[i].drvType && index == MotorDev_Table[i].drvIndex) {
@@ -1408,6 +1408,7 @@ Type_SignalStaInfo_Def SignalInfo_Table[] = {
     {SIGNAL_WASH_MODE_3,        BOARD5_INPUT_WASH_MODE_3,               SIGNAL_STABLE,  5,    0,  0},
     {SIGNAL_WASH_MODE_4,        BOARD5_INPUT_WASH_MODE_4,               SIGNAL_STABLE,  5,    0,  0},
     {SIGNAL_GATE_1_PROTECT,     BOARD5_INPUT_SIGNAL_GATE_1_PROTECT,     SIGNAL_STABLE,  5,    0,  0},
+    {SIGNAL_GIVE_UP_WASH,       BOARD5_INPUT_GIVE_UP_WASH,              SIGNAL_STABLE,  20,   0,  0},
 };
 
 /**

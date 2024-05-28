@@ -94,7 +94,7 @@ typedef struct{
     int                 frontRightBrushCurrent;
     int                 backLeftBrushCurrent;
     int                 backRightBrushCurrent;
-    char                version[10];
+    char                version[15];
     char                deviceModel[15];
     int                 startCnt;
     int                 completeCnt;

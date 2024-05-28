@@ -1285,7 +1285,8 @@ void ready_area_detection_thread(void *arg)
             else{                                                                   //仅停车光电触发，说明停好车
                 if(PARK_OK != carInfo.parkState){
                     carInfo.voiceCnt = 0;
-                    xp_ag_osal_get()->screen.display((get_is_allow_next_car_wash_flag() && wash.orderQueue[0].numberId != 0) ? AG_CAR_READY_TRANSFER : AG_CAR_STOP);
+                    // xp_ag_osal_get()->screen.display((get_is_allow_next_car_wash_flag() && wash.orderQueue[0].numberId != 0) ? AG_CAR_READY_TRANSFER : AG_CAR_STOP);
+                    xp_ag_osal_get()->screen.display(AG_CAR_STOP);
                     carInfo.parkOkTimeStamp = aos_now_ms();
                 }
                 // else if(get_is_allow_next_car_wash_flag() && get_diff_ms(carInfo.parkOkTimeStamp) > 18000){
@@ -1331,7 +1332,7 @@ void ready_area_detection_thread(void *arg)
             }
         }
         else if(!carInfo.isCarInReadyArea){     //没车在预备区的话根据有无订单切换道闸开关
-            if(wash.orderQueue[0].numberId != 0){
+            if(wash.orderQueue[0].numberId != 0 || isCarWantForwardExit){
                 if(is_dev_move_sta_idle(GATE_1_MACH_ID) && !is_signal_filter_trigger(SIGNAL_GATE_1_OPEN)){
                     gate_change_state(CRL_SECTION_1, GATE_OPEN);
                 }
@@ -1562,6 +1563,7 @@ typedef enum {
 	BUTTON_POWER_RESET,					//电源复位按键
 	BUTTON_PAUSE_RESUME,				//暂停继续按键
 	BUTTON_ENTRY_START,				    //入口处启动按键
+	BUTTON_DEV_OPEN_EXIT,		        //设备开放驶离按键
     BUTTON_NUM,
 } Type_ButtonType_Enum;
 
@@ -1577,7 +1579,7 @@ static void check_button(void)
         if(BUTTON_START_WASH == i)          isButtomTrig[i] = is_signal_filter_trigger(SIGNAL_BUTTON_START) ? true : false;
         else if(BUTTON_STOP_WASH == i)      isButtomTrig[i] = is_signal_filter_trigger(SIGNAL_BUTTON_STOP) ? true : false;
         else if(BUTTON_POWER_RESET == i)    isButtomTrig[i] = is_signal_filter_trigger(SIGNAL_BUTTON_RESET) ? true : false;
-        else if(BUTTON_PAUSE_RESUME == i)   isButtomTrig[i] = is_signal_filter_trigger(SIGNAL_BUTTON_PAUSE) ? true : false;
+        else if(BUTTON_DEV_OPEN_EXIT == i)  isButtomTrig[i] = is_signal_filter_trigger(SIGNAL_GIVE_UP_WASH) ? true : false;
         else if(BUTTON_ENTRY_START == i)    isButtomTrig[i] = is_signal_filter_trigger(SIGNAL_BUTTON_ENTRY_START) ? true : false;
         if(recordIsButtomTrig[i] != isButtomTrig[i]){
             if(!recordIsButtomTrig[i]){
@@ -1598,7 +1600,13 @@ static void check_button(void)
                         isGetBackHomeCmd = true;
                     }
                 }
-                else if(BUTTON_PAUSE_RESUME == i){
+                else if(BUTTON_DEV_OPEN_EXIT == i){
+                    if(STA_IDLE == wash.state){         //待机状态下允许开闸驶离
+                        customerOpenGate2TimeStamp = aos_now_ms();
+                        isCarWantForwardExit = true;
+                        gate_change_state(CRL_SECTION_1, GATE_OPEN);
+                        gate_change_state(CRL_SECTION_2, GATE_OPEN);
+                    }
                 }
             }
             recordIsButtomTrig[i] = isButtomTrig[i];
@@ -1634,12 +1642,12 @@ void xp_service_thread(void* arg)
         //识别当前是否可以启动新订单车辆
         if(get_is_allow_next_car_wash_flag()){
             if(carInfo.isAllowToWash && wash.orderQueue[0].numberId != 0){  //车辆停车位置准确后等待一段时间后启动
-                if(wash.orderQueue[0].isOnlineOrder){   //线上订单等待用户点击启动后开始洗车
-                    if(wash.isGetStartCmd){
-                        startWashFlag = true;
-                    }
-                }
-                else{
+                // if(wash.orderQueue[0].isOnlineOrder){   //线上订单等待用户点击启动后开始洗车
+                //     if(wash.isGetStartCmd){
+                //         startWashFlag = true;
+                //     }
+                // }
+                // else{
                     if(!isCarBeReady){
                         isCarBeReady = true;
                         carBeReadyTimeStamp = aos_now_ms();
@@ -1647,7 +1655,7 @@ void xp_service_thread(void* arg)
                     else if(get_diff_ms(carBeReadyTimeStamp) > 3000){
                         startWashFlag = true;
                     }
-                }
+                // }
             }
             else{
                 isCarBeReady = false;
