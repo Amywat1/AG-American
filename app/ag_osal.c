@@ -2578,6 +2578,40 @@ int osal_debug(char* type, char* fun, char* param)
     else if (strcmp(fun, "display") == 0) {
         xp_osal_display_set((Type_AgDisplay_Enum)atoi(param));
     }
+    else if (strcmp(fun, "readVFDerr") == 0) {
+        uint32_t errCode = 0xFFFFFFFF;
+        xp_lnovance_get_error_code(atoi(param), &errCode);
+        LOG_UPLOAD("Read VFD num %d err code %d", atoi(param), errCode);
+    }
+    else if (strcmp(fun, "clearVFDerr") == 0) {
+        uint16_t clearVFDIo = BOARD_NULL;
+        switch (atoi(param))
+        {
+        case 1: clearVFDIo = BOARD5_OUTPUT_TOP_ROTATION_RESET; break;
+        case 2: clearVFDIo = BOARD2_OUTPUT_FRONT_LEFT_BRUSH_RESET; break;
+        case 3: clearVFDIo = BOARD2_OUTPUT_FRONT_RIGHT_BRUSH_RESET; break;
+        case 4: clearVFDIo = BOARD2_OUTPUT_BACK_LEFT_BRUSH_RESET; break;
+        case 5: clearVFDIo = BOARD2_OUTPUT_BACK_RIGHT_BRUSH_RESET; break;
+        case 6: clearVFDIo = BOARD4_OUTPUT_LIFTER_RESET; break;
+        case 7: clearVFDIo = BOARD0_OUTPUT_CONVEYOR_1_RESET; break;
+        case 8: clearVFDIo = BOARD0_OUTPUT_CONVEYOR_2_RESET; break;
+        case 9: clearVFDIo = BOARD0_OUTPUT_CONVEYOR_3_RESET; break;
+        case 10: clearVFDIo = BOARD2_OUTPUT_FRONT_LEFT_MOVE_RESET; break;
+        case 11: clearVFDIo = BOARD2_OUTPUT_FRONT_RIGHT_MOVE_RESET; break;
+        case 12: clearVFDIo = BOARD2_OUTPUT_BACK_LEFT_MOVE_RESET; break;
+        case 13: clearVFDIo = BOARD2_OUTPUT_BACK_RIGHT_MOVE_RESET; break;
+        case 14: clearVFDIo = BOARD5_OUTPUT_TOP_SWING_RESET; break;
+        case 15: clearVFDIo = BOARD5_OUTPUT_LEFT_SKIRT_RESET; break;
+        case 16: clearVFDIo = BOARD5_OUTPUT_RIGHT_SKIRT_RESET; break;
+        default:
+            return 1;
+            break;
+        }
+        osal_dev_io_state_change(clearVFDIo, IO_ENABLE);
+        aos_msleep(1000);
+        osal_dev_io_state_change(clearVFDIo, IO_DISABLE);
+        LOG_UPLOAD("Clear VFD err IO %d err finished", clearVFDIo);
+    }
     return 1;
 }
 
