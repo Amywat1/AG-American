@@ -87,6 +87,7 @@ static Type_CarMoveAreaSta_Def carInfo = {0};
 static bool isGetBackHomeCmd = false;       //是否收到归位指令
 static uint64_t customerOpenGate2TimeStamp = 0;     //顾客开2号道闸的时间戳
 static bool isCarWantForwardExit = false;
+static bool isCarMoveInMachine = false;
 
 //检测使能与否的KV记录（枚举赋值不允许改变！）
 typedef enum{
@@ -1115,6 +1116,7 @@ void model_cmd_executed_thread(void *arg)
             if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_gate_2_open", 0);
             customerOpenGate2TimeStamp = aos_now_ms();
             isCarWantForwardExit = true;
+            isCarMoveInMachine = false;
         }
         else if(CMD_GATE_2_CLOSE == cmd.cmd_id && dateValue != 0){
             if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_gate_2_close", 0);
@@ -1185,6 +1187,7 @@ void ready_area_detection_thread(void *arg)
         //触发左右停偏光电或者停车光电认为车辆已经进入预备区，安全前提下关闭1号道闸
         if(is_signal_filter_trigger(SIGNAL_LEFT_SKEW) || is_signal_filter_trigger(SIGNAL_RIGHT_SKEW) || is_signal_filter_trigger(SIGNAL_STOP)){
             carInfo.isCarInReadyArea = true;
+            if(isCarWantForwardExit) isCarMoveInMachine = true;
             carOutReadyAreaTimeStamp = aos_now_ms();
             if(!is_signal_filter_trigger(SIGNAL_ALL_IN) && !is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT)){
                 if(is_dev_move_sta_idle(GATE_1_MACH_ID) && !is_signal_filter_trigger(SIGNAL_GATE_1_CLOSE)){
@@ -1332,7 +1335,7 @@ void ready_area_detection_thread(void *arg)
             }
         }
         else if(!carInfo.isCarInReadyArea){     //没车在预备区的话根据有无订单切换道闸开关
-            if(wash.orderQueue[0].numberId != 0 || isCarWantForwardExit){
+            if(wash.orderQueue[0].numberId != 0 || (isCarWantForwardExit && !isCarMoveInMachine)){
                 if(is_dev_move_sta_idle(GATE_1_MACH_ID) && !is_signal_filter_trigger(SIGNAL_GATE_1_OPEN)){
                     gate_change_state(CRL_SECTION_1, GATE_OPEN);
                 }
@@ -1604,6 +1607,7 @@ static void check_button(void)
                     if(STA_IDLE == wash.state){         //待机状态下允许开闸驶离
                         customerOpenGate2TimeStamp = aos_now_ms();
                         isCarWantForwardExit = true;
+                        isCarMoveInMachine = false;
                         gate_change_state(CRL_SECTION_1, GATE_OPEN);
                         gate_change_state(CRL_SECTION_2, GATE_OPEN);
                     }
