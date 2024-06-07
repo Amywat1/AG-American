@@ -1823,7 +1823,7 @@ int step_dev_wash(uint8_t *completeId)
                 if(0 == carWash[entryCarIndex].headPos){
                     carWash[entryCarIndex].headPos = workAreaConveyorEnc;   //记录车头位置
                     LOG_UPLOAD("Car index %d, head pos %d", entryCarIndex, carWash[entryCarIndex].headPos);
-                    water_system_control(WATER_HIGH_PRESS_WATER, true);
+                    water_system_control(WATER_SWING_WATER, true);
                     brush[BRUSH_TOP].isReadyCalibrate           = false;
                     brush[BRUSH_TOP].isCalibrated               = false;
                     brush[BRUSH_FRONT_LEFT].isReadyCalibrate    = false;
@@ -2208,7 +2208,7 @@ int step_dev_wash(uint8_t *completeId)
                         water_system_control(WATER_SHAMPOO_PIKN, false);
                         water_system_control(WATER_SHAMPOO_GREEN, false);
                         water_system_control(WATER_BASE_PLATE, false);
-                        water_system_control(WATER_HIGH_PRESS_WATER, false);
+                        water_system_control(WATER_SWING_WATER, false);
                         brush[BRUSH_TOP].runMode = BRUSH_MANUAL;    //洗车头时，停止顶刷跟随，上升一定距离，避免顶刷长时间刷车身
                         lifter_move_time(CMD_BACKWARD, 1500);
                     }
@@ -2247,7 +2247,7 @@ int step_dev_wash(uint8_t *completeId)
                                 water_system_control(WATER_SHAMPOO_PIKN, true);
                                 water_system_control(WATER_SHAMPOO_GREEN, true);
                                 water_system_control(WATER_BASE_PLATE, true);
-                                water_system_control(WATER_HIGH_PRESS_WATER, true);
+                                water_system_control(WATER_SWING_WATER, true);
                             }
                             ret = NOR_CONTINUE;
                         }
@@ -2360,7 +2360,7 @@ int step_dev_wash(uint8_t *completeId)
                 case PROC_FINISH_HIGH_PUMP:                     //结束高压喷水
                     if(carWash[i].isTailProcChanged){
                         carWash[i].isTailProcChanged = false;
-                        water_system_control(WATER_HIGH_PRESS_WATER, false);
+                        water_system_control(WATER_SWING_WATER, false);
                     }
                     break;
                 case PROC_FINISH_SKIRT_BRUSH:                   //结束裙边刷洗
@@ -2559,12 +2559,13 @@ int step_dev_wash(uint8_t *completeId)
                     }
                     else if(RET_COMPLETE == ret){
                         if(!carWash[i].isCarMoveCompleteArea) carWash[i].tailProc = PROC_FINISH_WAXWAT;
-                        carWash[i].isBackBrushFinish = true;
+                        carWash[i].isBackBrushFinish = true;        //这里可能会执行不到，可能在侧刷归位前输送带行程就已经跳转到下一步流程
                         ret = NOR_CONTINUE;
                     }
                     break;
                 case PROC_FINISH_WAXWAT:                            //结束蜡水
                     if(carWash[i].isTailProcChanged){
+                        carWash[i].isBackBrushFinish = true;        //上一个流程（结束后侧刷）可能执行不到，这里需要赋值
                         carWash[i].isTailProcChanged = false;
                         water_system_control(WATER_WAXWATER, false);
                         water_system_control(WATER_CLEAR_WATER, false);
@@ -3525,7 +3526,9 @@ static void stop_all_rotation(void)
 
 static void stop_all_water(void)
 {
-    water_system_control(WATER_HIGH_PRESS_WATER, false);
+    water_system_control(WATER_SWING_WATER, false);
+    water_system_control(WATER_CLEAR_CONVEYOR_L, false);
+    water_system_control(WATER_CLEAR_CONVEYOR_R, false);
     water_system_control(WATER_ALL, false);
 }
 
@@ -3588,7 +3591,7 @@ void app_crl_dev_set(Type_AppCrlObject_Enum obj, int cmd)
         conveyor_move(CRL_SECTION_3, cmd);
         break;
     case APP_CRL_HIGH_PRESS_WATER:
-        water_system_control(WATER_HIGH_PRESS_WATER, cmd > 0 ? true : false);
+        water_system_control(WATER_SWING_WATER, cmd > 0 ? true : false);
         break;
     case APP_CRL_WATER_SHAMPOO:
         water_system_control(WATER_SHAMPOO, cmd > 0 ? true : false);
@@ -3758,6 +3761,9 @@ int xp_module_debug(char *type, char *fun, char *param)
         }
         else if (strcmp(fun, "water_back_side") == 0) {
             water_system_control(WATER_BACK_SIDE, atoi(param_1));
+        }
+        else if (strcmp(fun, "water_crl") == 0) {
+            water_system_control(atoi(param_1), atoi(param_2));
         }
         // else if (strcmp(fun, "water_conveyor") == 0) {
         //     if(1 == atoi(param_1)) water_system_control(WATER_CONVEYOR_1, atoi(param_2));

@@ -267,6 +267,7 @@ void xp_iot_data_register_thread(void *arg)
     err &= IOT_ADD_PROPERTY_NODE("sts_Rfront_brush_current",	localModelSts->minitor.frontRightBrushCurrent,  TYPE_Int,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_Lback_brush_current",	    localModelSts->minitor.backLeftBrushCurrent,    TYPE_Int,	0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_Rback_brush_current",	    localModelSts->minitor.backRightBrushCurrent,   TYPE_Int,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE("sts_ota_flag",	            localModelSts->minitor.isOta,		        TYPE_Bool,	0,	0);
     //检测数据
     err &= IOT_ADD_PROPERTY_NODE_STR("sts_firmware_version",	localModelSts->minitor.version,         TYPE_String,0,	0);
     err &= IOT_ADD_PROPERTY_NODE_STR("sts_device_model",	    localModelSts->minitor.deviceModel,     TYPE_String,0,	0);

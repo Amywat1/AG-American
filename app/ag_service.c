@@ -223,6 +223,21 @@ int xp_service_init(void)
 
     wash.isFirstPowerOn = true;
     wash.state = STA_INIT;
+    // if(kvService.powerOnReset){         //当前初始化如果需要直接归位，识别当前必要机构是否都处于待机位，如果是直接转待机，尽量不要去执行动作，减少安全风险
+    //     if(is_signal_filter_trigger(SIGNAL_GATE_1_CLOSE) && is_signal_filter_trigger(SIGNAL_LIFTER_UP)
+    //     // && is_signal_filter_trigger(SIGNAL_LEFT_SKIRT_ZERO) && is_signal_filter_trigger(SIGNAL_LEFT_SKIRT_ZERO)
+    //     // && is_signal_filter_trigger(SIGNAL_B_LEFT_SKIRT_ZERO) && is_signal_filter_trigger(SIGNAL_B_RIGHT_SKIRT_ZERO)
+    //     && is_signal_filter_trigger(SIGNAL_FL_MOVE_ZERO) && is_signal_filter_trigger(SIGNAL_FR_MOVE_ZERO)
+    //     && is_signal_filter_trigger(SIGNAL_BL_MOVE_ZERO) && is_signal_filter_trigger(SIGNAL_BR_MOVE_ZERO)
+    //     && !is_signal_filter_trigger(SIGNAL_LIFTER_LEFT_DETECH) && !is_signal_filter_trigger(SIGNAL_LIFTER_RIGHT_DETECH)
+    //     && !is_signal_filter_trigger(SIGNAL_FL_COLLISION) && !is_signal_filter_trigger(SIGNAL_FR_COLLISION)
+    //     && !is_signal_filter_trigger(SIGNAL_BL_COLLISION) && !is_signal_filter_trigger(SIGNAL_BR_COLLISION)){
+    //         wash.state = STA_IDLE;
+    //         wash.isFirstSwitch = true;
+    //     }
+    //     kvService.powerOnReset = false;
+    //     xp_save_kv_params("powerOnReset", &kvService.powerOnReset, sizeof(kvService.powerOnReset));
+    // }
     wash.washMode = NORMAL_WASH;
     appModule.localCmd.washMode = wash.washMode;
 
@@ -252,6 +267,7 @@ typedef struct{
     int                     endBackBrush;
     int                     endWaxwater;
     int                     endDrying;
+    bool                    powerOnReset;
     RTC_time                time;
     Type_OrdersInfo_Def     order;
 } Type_KV_Service_Def;
@@ -313,6 +329,7 @@ static Type_KvDataMap_Def KvDataMap_Table[] = {
     {CMD_WAXWATER_END_POS,          "epWaxwater",   &kvService.endWaxwater,         &appModule.localCmd.adjust.waxwaterEndPos,      sizeof(kvService.endWaxwater),      0xFF},
     {CMD_DRYER_START_POS,           "spDryer",      &kvService.startDrying,         &appModule.localCmd.adjust.dryerStartPos,       sizeof(kvService.startDrying),      0xFF},
     {CMD_DRYER_END_POS,             "epDryer",      &kvService.endDrying,           &appModule.localCmd.adjust.dryerEndPos,         sizeof(kvService.endDrying),        0xFF},
+    {CMD_NULL,                      "powerOnReset", &kvService.powerOnReset,        NULL,   sizeof(kvService.powerOnReset),         0xFF},
     {CMD_NULL,                      "time",         &kvService.time,                NULL,   sizeof(kvService.time),                 0xFF},
     {CMD_NULL,                      "completeCnt",  &kvService.order.completeCnt,   NULL,   sizeof(kvService.order.completeCnt),    0xFF},
     {CMD_NULL,                      "offlineCnt",   &kvService.order.offlineStartNum,NULL,  sizeof(kvService.order.offlineStartNum),0xFF},
@@ -339,6 +356,7 @@ static int set_kv_default_value(void)
     kvService.endBackBrush          = 700;
     kvService.endWaxwater           = 720;
     kvService.endDrying             = 1180;
+    kvService.powerOnReset          = false;
     //日期不用恢复默认值，线程里获取时间更新
     kvService.order.completeCnt     = 0;
     kvService.order.offlineStartNum = 0;
@@ -2068,17 +2086,34 @@ Type_ModelCmd_Def *get_modelCmd_Obj(void)
 }
 
 /**
- * @brief       接收远程控制指令信号量
+ * @brief       接收远程控制指令信号量（设备OTA时不接收控制指令）
  * @param[in]	cmd                 
  */
 void set_remote_cmd_queue(Type_PropertyNode_Def *cmd)
 {
-    aos_queue_send(&appModule.cmdQueue, cmd, sizeof(Type_PropertyNode_Def));
+    if(!appModule.localSts.minitor.isOta)  aos_queue_send(&appModule.cmdQueue, cmd, sizeof(Type_PropertyNode_Def));
 }
 
 void set_app_version(char const *version)
 {
     strcpy(appModule.appVersion, version);
+}
+
+//判断当前设备状态是否允许OTA
+bool is_device_allow_OTA(void)
+{
+    return (STA_RUN == wash.state || STA_COMPELTE == wash.state || STA_PAUSE == wash.state || STA_RECOVER == wash.state) ? false : true;
+}
+//开始OTA升级，停止设备运行
+void OTA_start_stop_service(void)
+{
+    appModule.localSts.minitor.isOta = true;            //置位OTA升级标志，升级完成后程序会重启，标志位上电清零
+    // if(STA_IDLE == wash.state){                         //设备当前如果在待机状态，升级完成后自动归位
+    //     kvService.powerOnReset = true;
+    //     xp_save_kv_params("powerOnReset", &kvService.powerOnReset, sizeof(kvService.powerOnReset));
+    // }
+    xp_service_set_state(STA_STOP);
+    aos_msleep(3000);
 }
 
 /*                                                         =======================                                                         */

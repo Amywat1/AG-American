@@ -1146,8 +1146,12 @@ void xp_osal_water_system_crl_thread(void* arg)
     bool waterSta[WATER_CRL_NUM];    //线程里使用局部变量，避免全局的改变影响此处判断
     aos_sem_new(&waterCrl.water_sem, 0);
 
-    //只赋值相应的水路IO，其它水系统控制类型保持默认值0
-    waterCrl.matchIo[WATER_HIGH_PRESS_WATER]    = BOARD4_OUTPUT_SWING_VALVE;
+    /* 只赋值相应的水路IO，其它水系统控制类型保持默认值0 */
+    /* 高压泵水路 */
+    waterCrl.matchIo[WATER_SWING_WATER]         = BOARD4_OUTPUT_SWING_VALVE;
+    waterCrl.matchIo[WATER_CLEAR_CONVEYOR_L]    = BOARD4_OUTPUT_LEFT_CONVEYOR_VALVE;
+    waterCrl.matchIo[WATER_CLEAR_CONVEYOR_R]    = BOARD4_OUTPUT_RIGHT_CONVEYOR_VALVE;
+    //低压泵水路
     waterCrl.matchIo[WATER_WAXWATER]            = BOARD1_OUTPUT_WAXWATER_VALVE;
     waterCrl.matchIo[WATER_SHAMPOO]             = BOARD1_OUTPUT_SHAMPOO_WATER_VALVE;
     waterCrl.matchIo[WATER_TOP]                 = BOARD1_OUTPUT_TOP_WATER_VALVE;
@@ -1198,23 +1202,28 @@ void xp_osal_water_system_crl_thread(void* arg)
             continue;           //操作排水排气时不再操作其它，需要记录当前的水相关状态记录
         }
         
-        //高压水只有一路单独控制
-        if(waterCrl.recordSta[WATER_HIGH_PRESS_WATER] != waterSta[WATER_HIGH_PRESS_WATER]){
-            waterCrl.recordSta[WATER_HIGH_PRESS_WATER] = waterSta[WATER_HIGH_PRESS_WATER];
-            if(true == waterSta[WATER_HIGH_PRESS_WATER]){
-                osal_dev_io_state_change(BOARD4_OUTPUT_SWING_VALVE, IO_ENABLE);
-                aos_msleep(500);
-                osal_dev_io_state_change(BOARD4_OUTPUT_TOP_SWING, IO_ENABLE);
-                osal_dev_io_state_change(BOARD0_OUTPUT_HIGH_PUMP, IO_ENABLE);
+        //高压泵的水系统控制
+        bool isCrlHighPumpWater = false;
+        for (uint8_t i = 0; i < WATER_CRL_NUM; i++){
+            if((WATER_SWING_WATER == i || WATER_CLEAR_CONVEYOR_L == i || WATER_CLEAR_CONVEYOR_R == i)
+            && (waterCrl.recordSta[i] != waterSta[i])){
+                waterCrl.recordSta[i] = waterSta[i];
+                isCrlHighPumpWater = true;
+                if(true == waterSta[i]){
+                    osal_dev_io_state_change(waterCrl.matchIo[i], IO_ENABLE);
+                    aos_msleep(500);
+                    if(WATER_SWING_WATER == i) osal_dev_io_state_change(BOARD4_OUTPUT_TOP_SWING, IO_ENABLE);
+                    osal_dev_io_state_change(BOARD0_OUTPUT_HIGH_PUMP, IO_ENABLE);
+                }
+                else{
+                    osal_dev_io_state_change(BOARD0_OUTPUT_HIGH_PUMP, IO_DISABLE);
+                    aos_msleep(500);
+                    if(WATER_SWING_WATER == i) osal_dev_io_state_change(BOARD4_OUTPUT_TOP_SWING, IO_DISABLE);
+                    osal_dev_io_state_change(waterCrl.matchIo[i], IO_DISABLE);
+                }
             }
-            else{
-                osal_dev_io_state_change(BOARD0_OUTPUT_HIGH_PUMP, IO_DISABLE);
-                aos_msleep(500);
-                osal_dev_io_state_change(BOARD4_OUTPUT_SWING_VALVE, IO_DISABLE);
-                osal_dev_io_state_change(BOARD4_OUTPUT_TOP_SWING, IO_DISABLE);
-            }
-            continue;
         }
+        if(isCrlHighPumpWater) continue;                //高压泵水系统处理完直接退出，不进入下面低压泵水系统的判定
 
         //低压泵的水系统控制
         bool isWaterOpen = false;
@@ -1275,11 +1284,19 @@ void xp_osal_water_system_crl_thread(void* arg)
                     osal_dev_io_state_change(waterCrl.matchIo[i], IO_DISABLE);
                 }
             }
-            if(!isPumpWorking){                             //之前没开启水泵就开启水泵
-                aos_msleep(300);                            //延时一段时间后开启水泵
-                osal_dev_io_state_change(BOARD0_OUTPUT_LOW_PUMP, IO_ENABLE);
+
+            if(true == waterSta[WATER_CLEAR_WATER] || true == waterSta[WATER_WAXWATER]      //清水和药剂类开启低压泵，其它水不开
+            || true == waterSta[WATER_SHAMPOO] || true == waterSta[WATER_SHAMPOO_PIKN] || true == waterSta[WATER_SHAMPOO_GREEN]){
+                if(!isPumpWorking){                         //之前没开启水泵就开启水泵
+                    aos_msleep(300);                        //延时一段时间后开启水泵
+                    osal_dev_io_state_change(BOARD0_OUTPUT_LOW_PUMP, IO_ENABLE);
+                }
+                isPumpWorking = true;
             }
-            isPumpWorking = true;
+            else{
+                if(isPumpWorking) osal_dev_io_state_change(BOARD0_OUTPUT_LOW_PUMP, IO_DISABLE); //这里肯定是有阀打开可以泄压的，不用先关泵再关阀
+                isPumpWorking = false;
+            }
         }
         else{
             if(isPumpWorking){
@@ -1329,20 +1346,22 @@ void water_system_control(Type_WaterSystem_Enum type, bool enable)
     }
     else{
         if(WATER_ALL == type){
-           waterCrl.waterSta[WATER_HIGH_PRESS_WATER]    = false;
-           waterCrl.waterSta[WATER_WAXWATER]            = false;
-           waterCrl.waterSta[WATER_SHAMPOO]             = false;
-           waterCrl.waterSta[WATER_TOP]                 = false;
-           waterCrl.waterSta[WATER_FRONT_SIDE]          = false;
-           waterCrl.waterSta[WATER_BACK_SIDE]           = false;
+            waterCrl.waterSta[WATER_SWING_WATER]        = false;
+            waterCrl.waterSta[WATER_CLEAR_CONVEYOR_L]   = false;
+            waterCrl.waterSta[WATER_CLEAR_CONVEYOR_R]   = false;
+            waterCrl.waterSta[WATER_WAXWATER]           = false;
+            waterCrl.waterSta[WATER_SHAMPOO]            = false;
+            waterCrl.waterSta[WATER_TOP]                = false;
+            waterCrl.waterSta[WATER_FRONT_SIDE]         = false;
+            waterCrl.waterSta[WATER_BACK_SIDE]          = false;
         //    waterCrl.waterSta[WATER_CONVEYOR_1] = false;
         //    waterCrl.waterSta[WATER_CONVEYOR_2] = false;
         //    waterCrl.waterSta[WATER_CONVEYOR_3] = false;
         //    waterCrl.waterSta[WATER_MIDDLE]     = false;
-           waterCrl.waterSta[WATER_SHAMPOO_PIKN]        = false;
-           waterCrl.waterSta[WATER_SHAMPOO_GREEN]       = false;
-           waterCrl.waterSta[WATER_CLEAR_WATER]         = false;
-           waterCrl.waterSta[WATER_BASE_PLATE]          = false;
+            waterCrl.waterSta[WATER_SHAMPOO_PIKN]       = false;
+            waterCrl.waterSta[WATER_SHAMPOO_GREEN]      = false;
+            waterCrl.waterSta[WATER_CLEAR_WATER]        = false;
+            waterCrl.waterSta[WATER_BASE_PLATE]         = false;
         }
         else{
            waterCrl.waterSta[type] = enable;
