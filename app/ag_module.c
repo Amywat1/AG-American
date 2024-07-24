@@ -174,7 +174,7 @@ typedef struct{
     uint32_t            headOffsetPos;      //车头在工作区移动的距离
     uint32_t            tailPos;            //车尾位置
     uint32_t            tailOffsetPos;      //车尾在工作区移动的距离
-    uint32_t            topLifter;          //车顶的升降高度
+    int32_t             topLifter;          //车顶的升降高度（有正反向，可能存在负值）
     uint32_t            headWindowsOffsetHead;     //前车窗相对于车头位置
     uint32_t            tailWindowsOffsetHead;     //后车窗相对于车头位置
     uint16_t            length;             //车长
@@ -228,7 +228,7 @@ static int32_t recordLifterPos[CAR_POS_RECORD_INFO_MAX_NUM] = {0};
 
 //毛刷各状态值
 static Type_BrushInfo_Def brush[BRUSH_NUM] = {0};
-static int16_t  topBrushPosCurrent[TOP_BRUSH_RECORD_CUR_AREA];
+static int16_t topBrushPosCurrent[TOP_BRUSH_RECORD_CUR_AREA] = {0};
 
 // static Type_ComSwitchSta_Enum   comSwSta[COM_SWITCH_NUMBER] = {0};  //公有开关的切换状态
 // static Type_DriverCmdInfo_Def   comSwCmd[COM_SWITCH_NUMBER] = {0};  //公有开关的驱动指令
@@ -1311,6 +1311,7 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
         else{
             if(!isStartCali){
                 isStartCali = true;
+                //顶刷脉冲可能错误的情况下，这里需要做处理，避免后面跟随时用到错误的值
                 LOG_UPLOAD("Lifter encoder maybe error, no recorder brush top pos current");
             }
             if(recordCaliCnt < BRUSH_CALI_READ_CNT){
@@ -2607,7 +2608,6 @@ int step_dev_wash(uint8_t *completeId)
 void side_brush_follow_thread(void *arg)
 {
     int16_t lifterPos = 0;
-    int16_t brushCurrent = 0;                               //毛刷当前电流
     int16_t brushCurrent_L = 0;                             //毛刷控制下限阈值
     int16_t brushCurrent_H = 0;                             //毛刷控制上限阈值
     Type_DriverCmd_Enum needCmd[BRUSH_NUM] = {0};           //当前需要跟随方向
@@ -2709,11 +2709,11 @@ void side_brush_follow_thread(void *arg)
                 case BRUSH_TOP:
                     brushCurrent_L   = (BRUSH_FOLLOW_NO_BACKWARD == brush[i].runMode) ? brush[i].pressL_NoBW : brush[i].pressL;
                     brushCurrent_H   = (BRUSH_FOLLOW_NO_FORWARD == brush[i].runMode) ? brush[i].pressH_NoFW : brush[i].pressH;
-                    //顶刷高度较高时，电流上下限值需增加毛刷打到结构件的偏移电流值
-                    if(lifterPos < TOP_BRUSH_RECORD_CUR_AREA){
-                        brushCurrent_L += (topBrushPosCurrent[lifterPos] - brush[i].baseCurrent);
-                        brushCurrent_H += (topBrushPosCurrent[lifterPos] - brush[i].baseCurrent);
-                    }
+                    // //顶刷高度较高时，电流上下限值需增加毛刷打到结构件的偏移电流值
+                    // if(lifterPos < TOP_BRUSH_RECORD_CUR_AREA){
+                    //     brushCurrent_L += (topBrushPosCurrent[lifterPos] - brush[i].baseCurrent);
+                    //     brushCurrent_H += (topBrushPosCurrent[lifterPos] - brush[i].baseCurrent);
+                    // }
                     break;
                 case BRUSH_FRONT_LEFT:
                 case BRUSH_FRONT_RIGHT:
@@ -2736,10 +2736,13 @@ void side_brush_follow_thread(void *arg)
                 default:
                     break;
                 }
-                
-                brushCurrent = brush[i].current;
-                if(brushCurrent > brushCurrent_H)			needCmd[i] = CMD_BACKWARD;
-                else if(brushCurrent < brushCurrent_L)		needCmd[i] = CMD_FORWARD;
+
+                if(brush[i].current > brushCurrent_H
+                || brush[i].current > brush[i].pressProtect
+                || brush[i].current > brush[i].pressWarning){   //超过上限值，保护值，报警值都执行后退
+                    needCmd[i] = CMD_BACKWARD;
+                }
+                else if(brush[i].current < brushCurrent_L)	needCmd[i] = CMD_FORWARD;
                 else										needCmd[i] = CMD_STILL;
 
                 filterCnt[i]++;
@@ -2749,7 +2752,7 @@ void side_brush_follow_thread(void *arg)
                 }
 
                 // if(BRUSH_TOP == i){
-                //     LOG_DEBUG("------current %d need cmd %d", brushCurrent, needCmd[i]);
+                //     LOG_DEBUG("------current %d need cmd %d", brush[i].current, needCmd[i]);
                 // }
             }
 

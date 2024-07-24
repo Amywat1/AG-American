@@ -851,9 +851,9 @@ static int xp_osal_freq_run(int index, int vel)
  */
 static int xp_osal_freq_get_current(int index)
 {
-    int16_t current = 0;
+    int16_t current = 0xFFFF;                           //按很大的电流处理，保障触压过大时能够触发报警
 
-    if(0 == aos_mutex_lock(&rs485_1_mux, 100)){         //时间不易太长，避免影响其它的vfd电流读取
+    if(0 == aos_mutex_lock(&rs485_1_mux, 300)){         //时间不易太长，避免影响其它的vfd电流读取
         for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
         {
             if (DRIVER_TYPE_VFD_LNOVANCE == MotorDev_Table[i].drvType && index == MotorDev_Table[i].drvIndex) {
