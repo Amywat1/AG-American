@@ -1277,7 +1277,7 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
             //记录顶刷在一定高度时的电流值（顶刷在一定高度会打到结构框架，在这段区域的电流值判定需要做一定处理）AG上其实不用，兼容愿景7
             lifterPos = xp_osal_get_dev_pos(LIFTER_MATCH_ID);
             if(lifterPos >= 0 && lifterPos < TOP_BRUSH_RECORD_CUR_AREA){
-                topBrushPosCurrent[lifterPos] = brush[BRUSH_TOP].current;
+                topBrushPosCurrent[lifterPos] = brush[BRUSH_TOP].current;           //!!!!这里应该增加判定，current可能会读失败赋值非正常的采样值
                 //填补没有记录的数组
                 for (uint8_t i = topBrushRecordPosNum; i < lifterPos; i++)
                 {
@@ -2348,6 +2348,14 @@ int step_dev_wash(uint8_t *completeId)
                 //     }
                 // }
 
+                //判断是否允许下一辆车进入（进入工作区的这辆车洗完车尾后允许下一辆车进入）
+                if(entryCarIndex == i
+                && carWash[i].tailProc >= PROC_FINISH_FRONT_BRUSH && carWash[i].isWashCarTailFinish
+                && is_signal_filter_trigger(SIGNAL_FL_MOVE_ZERO) && is_signal_filter_trigger(SIGNAL_FR_MOVE_ZERO)){
+                    isAllowNextCarInWorkArea = true;    //车尾刷洗完成后允许下一辆车进入
+                    entryCarIndex = 0;                  //允许下一辆车进入后进入车辆的Id编号清零（表示当前无车辆正在进入工作区）
+                }
+
                 //判断是否进入了新流程
                 carWash[i].isTailProcChanged = (carWash[i].lastTailProc == carWash[i].tailProc) ? false : true;
                 carWash[i].lastTailProc = carWash[i].tailProc;
@@ -2502,8 +2510,8 @@ int step_dev_wash(uint8_t *completeId)
                                     water_system_control(WATER_FRONT_SIDE, false);
 
                                     //有车洗车尾结束了就开放下一辆车进入
-                                    isAllowNextCarInWorkArea = true;
-                                    entryCarIndex = 0;                  //允许下一辆车进入后进入车辆的Id编号清零（表示当前无车辆正在进入工作区）
+                                    // isAllowNextCarInWorkArea = true;
+                                    // entryCarIndex = 0;                  //允许下一辆车进入后进入车辆的Id编号清零（表示当前无车辆正在进入工作区）
                                     if(is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)){
                                         isRearEndProtect = false;                       //输送带动作后重新判定是否防追尾保护
                                         conveyor_move(CRL_SECTION_2, CMD_FORWARD);
@@ -2710,7 +2718,7 @@ void side_brush_follow_thread(void *arg)
                     brushCurrent_L   = (BRUSH_FOLLOW_NO_BACKWARD == brush[i].runMode) ? brush[i].pressL_NoBW : brush[i].pressL;
                     brushCurrent_H   = (BRUSH_FOLLOW_NO_FORWARD == brush[i].runMode) ? brush[i].pressH_NoFW : brush[i].pressH;
                     // //顶刷高度较高时，电流上下限值需增加毛刷打到结构件的偏移电流值
-                    // if(lifterPos < TOP_BRUSH_RECORD_CUR_AREA){
+                    // if(lifterPos < TOP_BRUSH_RECORD_CUR_AREA){                   //！！！这里lifterPos需要做下范围判定，因为可能超出数组的范围
                     //     brushCurrent_L += (topBrushPosCurrent[lifterPos] - brush[i].baseCurrent);
                     //     brushCurrent_H += (topBrushPosCurrent[lifterPos] - brush[i].baseCurrent);
                     // }
