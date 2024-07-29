@@ -15,7 +15,7 @@
 #define VFD_NUM                         (9)         //变频器数量
 #define VFD_DETECT_FREQ_TIME            (1000)      //变频器的循环检测时间(ms)
 #define ERR_CHECK_SLEEP_TIME            (10)        //错误检测的等待时间(ms)
-#define FREQ_ERR_T(T)                   T*ERR_CHECK_SLEEP_TIME/VFD_DETECT_FREQ_TIME             //设置变频器报警时间
+#define FREQ_ERR_T(T)                   (T)*ERR_CHECK_SLEEP_TIME/VFD_DETECT_FREQ_TIME             //设置变频器报警时间
 #define ERR_TABLE_NUMBERS               (sizeof(ErrInfo_Table) / sizeof(ErrInfo_Table[0]))      //报警个数
 #define EMC_MATCH_TABLE_ID              (0)         //急停报警在报警数组里的序号
 #define ERR_CANT_BACK_HOME              (ErrInfo_Table[EMC_MATCH_TABLE_ID].isErr)

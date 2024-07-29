@@ -1299,22 +1299,22 @@ void xp_osal_water_system_crl_thread(void* arg)
             }
         }
         else{
-            if(isPumpWorking){
+            osal_dev_io_state_change(BOARD0_OUTPUT_LOW_PUMP, IO_DISABLE);
+            osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PUMP, IO_DISABLE);
+            osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PINK_PUMP, IO_DISABLE);
+            osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_GREEN_PUMP, IO_DISABLE);
+            osal_dev_io_state_change(BOARD1_OUTPUT_WAXWATER_PUMP, IO_DISABLE);
+            osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_AIR_VALVE, IO_DISABLE);
+            osal_dev_io_state_change(BOARD1_OUTPUT_DRIER_VALVE, IO_DISABLE);
+            if(isPumpWorking){                              //水泵之前是开启的，则关泵后延时一段时间再关阀
                 isPumpWorking = false;
-                osal_dev_io_state_change(BOARD0_OUTPUT_LOW_PUMP, IO_DISABLE);
-                osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PUMP, IO_DISABLE);
-                osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PINK_PUMP, IO_DISABLE);
-                osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_GREEN_PUMP, IO_DISABLE);
-                osal_dev_io_state_change(BOARD1_OUTPUT_WAXWATER_PUMP, IO_DISABLE);
-                osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_AIR_VALVE, IO_DISABLE);
-                osal_dev_io_state_change(BOARD1_OUTPUT_DRIER_VALVE, IO_DISABLE);
                 aos_msleep(500);
-                for (uint8_t i = 0; i < WATER_CRL_NUM; i++)
-                {
-                    if(waterCrl.matchIo[i]){
-                        osal_dev_io_state_change(waterCrl.matchIo[i], IO_DISABLE);
-                        waterCrl.recordSta[i] = false;
-                    }
+            }
+            for (uint8_t i = 0; i < WATER_CRL_NUM; i++)
+            {
+                if(waterCrl.matchIo[i]){
+                    osal_dev_io_state_change(waterCrl.matchIo[i], IO_DISABLE);
+                    waterCrl.recordSta[i] = false;
                 }
             }
         }
