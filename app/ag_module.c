@@ -56,6 +56,11 @@
 // #define CRL_COM_SW_NUM                          (sizeof(Com_Switch_Table) / sizeof(Com_Switch_Table[0]))    //参与控制的公有开关个数
 #define CRL_PRI_SW_NUM                          (sizeof(Pri_Switch_Table) / sizeof(Pri_Switch_Table[0]))    //参与控制的私有开关个数
 
+//洗车模式
+#define NORMAL_WASH (1)	    //普通洗
+#define QUICK_WASH	(2)		//
+#define FINE_WASH	(3)	    //高档洗
+
 //控制方向指令枚举
 typedef enum {
 	CMD_BACKWARD_S_2 = -3,				//反向速度2
@@ -172,6 +177,7 @@ typedef enum {
 Type_CarProcPosInfo_Def   washProcPos = {0};
 
 typedef struct{
+    uint8_t             washMode;           //洗车模式
     uint32_t            headPos;            //车头位置
     uint32_t            headOffsetPos;      //车头在工作区移动的距离
     uint32_t            tailPos;            //车尾位置
@@ -2018,10 +2024,14 @@ int step_dev_wash(uint8_t *completeId)
                         LOG_UPLOAD("Top brush touch car ahead of pos offset, current now %d, touch %d", brush[BRUSH_TOP].current, brush[BRUSH_TOP].pressTouchcar);
                         //流程跳跃则补全跳过流程的动作
                         osal_dev_io_state_change(BOARD0_OUTPUT_SKIRT_BRUSH_VALVE, IO_ENABLE);
-                        water_system_control(WATER_SHAMPOO, true);
-                        water_system_control(WATER_SHAMPOO_PIKN, true);
-                        water_system_control(WATER_SHAMPOO_GREEN, true);
-                        water_system_control(WATER_BASE_PLATE, true);
+                        if(FINE_WASH == carWash[i].washMode){
+                            water_system_control(WATER_BASE_PLATE, true);
+                            water_system_control(WATER_PREMIUM_SHAMPOO, true);
+                        }
+                        else{
+                            water_system_control(WATER_NORMAL_SHAMPOO, true);
+                        }
+                        // water_system_control(WATER_WAX, true);
                         carWash[i].headProc = PROC_START_TOP_BRUSH;
                         /* 顶刷触碰到轿车位置非车头位置，这里不刷新 */
                         // //刷新车头位置（有可能打滑，导致后面比如吹风在车没到的时候就开始吹了）
@@ -2164,10 +2174,13 @@ int step_dev_wash(uint8_t *completeId)
             case PROC_START_SHAMPOO:                //开始进程喷香波
                 if(carWash[i].isHeadProcChanged){
                     carWash[i].isHeadProcChanged = false;
-                    water_system_control(WATER_SHAMPOO, true);
-                    water_system_control(WATER_SHAMPOO_PIKN, true);
-                    water_system_control(WATER_SHAMPOO_GREEN, true);
-                    water_system_control(WATER_BASE_PLATE, true);
+                    if(FINE_WASH == carWash[i].washMode){
+                        water_system_control(WATER_BASE_PLATE, true);
+                        water_system_control(WATER_PREMIUM_SHAMPOO, true);
+                    }
+                    else{
+                        water_system_control(WATER_NORMAL_SHAMPOO, true);
+                    }
                 }
                 break;
             case PROC_START_TOP_BRUSH:              //开始进程洗车顶
@@ -2183,10 +2196,13 @@ int step_dev_wash(uint8_t *completeId)
                         osal_dev_io_state_change(BOARD4_OUTPUT_LEFT_SKIRT_ROTATION, IO_ENABLE);
                         osal_dev_io_state_change(BOARD4_OUTPUT_RIGHT_SKIRT_ROTATION, IO_ENABLE);
                         osal_dev_io_state_change(BOARD0_OUTPUT_SKIRT_BRUSH_VALVE, IO_ENABLE);
-                        water_system_control(WATER_SHAMPOO, true);
-                        water_system_control(WATER_SHAMPOO_PIKN, true);
-                        water_system_control(WATER_SHAMPOO_GREEN, true);
-                        water_system_control(WATER_BASE_PLATE, true);
+                        if(FINE_WASH == carWash[i].washMode){
+                            water_system_control(WATER_BASE_PLATE, true);
+                            water_system_control(WATER_PREMIUM_SHAMPOO, true);
+                        }
+                        else{
+                            water_system_control(WATER_NORMAL_SHAMPOO, true);
+                        }
                     }
                 }
                 //前轮可能在预备区和工作区输送带间打滑，这里加个超时判定
@@ -2209,10 +2225,13 @@ int step_dev_wash(uint8_t *completeId)
                         sideBrushWashPos = SIDE_BRUSH_POS_LEFT;     //开始前侧刷时，侧刷已经在中间，不需要再移动到中间
                         isSideBrushCantMoveToPose = false;          //默认侧刷能到达指定位置，避免前面一辆车洗车尾时把该标志位置true了
                         carWash[i].isWashCarHeadFinish = false;
-                        water_system_control(WATER_SHAMPOO, false);
-                        water_system_control(WATER_SHAMPOO_PIKN, false);
-                        water_system_control(WATER_SHAMPOO_GREEN, false);
-                        water_system_control(WATER_BASE_PLATE, false);
+                        if(FINE_WASH == carWash[i].washMode){
+                            water_system_control(WATER_BASE_PLATE, false);
+                            water_system_control(WATER_PREMIUM_SHAMPOO, false);
+                        }
+                        else{
+                            water_system_control(WATER_NORMAL_SHAMPOO, false);
+                        }
                         water_system_control(WATER_SWING_WATER, false);
                         brush[BRUSH_TOP].runMode = BRUSH_MANUAL;    //洗车头时，停止顶刷跟随，上升一定距离，避免顶刷长时间刷车身
                         lifter_move_time(CMD_BACKWARD, 1500);
@@ -2248,10 +2267,13 @@ int step_dev_wash(uint8_t *completeId)
                                 // front_side_brush_move_pos(CRL_ONLY_RIGHT, CMD_FORWARD, 30 - 5);
                                 lifter_move_time(CMD_FORWARD, 1500);                    //这个时间不要大于侧刷移动的时间，略小于上升的时间
                                 carWash[i].isWashCarHeadFinish = true;
-                                water_system_control(WATER_SHAMPOO, true);
-                                water_system_control(WATER_SHAMPOO_PIKN, true);
-                                water_system_control(WATER_SHAMPOO_GREEN, true);
-                                water_system_control(WATER_BASE_PLATE, true);
+                                if(FINE_WASH == carWash[i].washMode){
+                                    water_system_control(WATER_BASE_PLATE, true);
+                                    water_system_control(WATER_PREMIUM_SHAMPOO, true);
+                                }
+                                else{
+                                    water_system_control(WATER_NORMAL_SHAMPOO, true);
+                                }
                                 water_system_control(WATER_SWING_WATER, true);
                             }
                             ret = NOR_CONTINUE;
@@ -2288,7 +2310,8 @@ int step_dev_wash(uint8_t *completeId)
             case PROC_START_WAXWATER:        //开始进程喷蜡水
                 if(carWash[i].isHeadProcChanged){
                     carWash[i].isHeadProcChanged = false;
-                    water_system_control(WATER_WAXWATER, true);
+                    if(FINE_WASH == carWash[i].washMode)    water_system_control(WATER_WAX, true);
+                    else                                    water_system_control(DRYIND_AGENT, true);
                 }
                 break;
             case PROC_START_CLEAR_WATER:     //开始进程喷清水
@@ -2393,10 +2416,13 @@ int step_dev_wash(uint8_t *completeId)
                 case PROC_FINISH_SHAMPOO:                       //结束香波
                     if(carWash[i].isTailProcChanged){
                         carWash[i].isTailProcChanged = false;
-                        water_system_control(WATER_SHAMPOO, false);
-                        water_system_control(WATER_SHAMPOO_PIKN, false);
-                        water_system_control(WATER_SHAMPOO_GREEN, false);
-                        water_system_control(WATER_BASE_PLATE, false);
+                        if(FINE_WASH == carWash[i].washMode){
+                            water_system_control(WATER_BASE_PLATE, false);
+                            water_system_control(WATER_PREMIUM_SHAMPOO, false);
+                        }
+                        else{
+                            water_system_control(WATER_NORMAL_SHAMPOO, false);
+                        }
                     }
                     break;
                 case PROC_FINISH_TOP_BRUSH:                     //结束顶部刷洗
@@ -2465,7 +2491,8 @@ int step_dev_wash(uint8_t *completeId)
                         brush[BRUSH_FRONT_LEFT].isJogMove   = false;
                         brush[BRUSH_FRONT_RIGHT].isJogMove  = false;
                         conveyor_move(CRL_SECTION_2, CMD_STILL);
-                        water_system_control(WATER_WAXWATER, false);    //输送带停止时，暂停喷蜡水
+                        if(FINE_WASH == carWash[i].washMode)    water_system_control(WATER_WAX, false);
+                        else                                    water_system_control(DRYIND_AGENT, false);  //输送带停止时，暂停喷蜡水
                         water_system_control(WATER_CLEAR_WATER, false);
                         stepSta.isModuleDriverExecuted = false; //重置模型驱动供侧刷换向使用
                         sideBrushWashPos = SIDE_BRUSH_POS_MIDDLE;
@@ -2525,7 +2552,8 @@ int step_dev_wash(uint8_t *completeId)
                                     if(is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)){
                                         isRearEndProtect = false;                       //输送带动作后重新判定是否防追尾保护
                                         conveyor_move(CRL_SECTION_2, CMD_FORWARD);
-                                        water_system_control(WATER_WAXWATER, true);     //输送带继续动作后，继续喷蜡水
+                                        if(FINE_WASH == carWash[i].washMode)    water_system_control(WATER_WAX, true);
+                                        else                                    water_system_control(DRYIND_AGENT, true);//输送带继续动作后，继续喷蜡水
                                         water_system_control(WATER_CLEAR_WATER, true);
                                     }
                                 }
@@ -2586,7 +2614,8 @@ int step_dev_wash(uint8_t *completeId)
                     if(carWash[i].isTailProcChanged){
                         carWash[i].isBackBrushFinish = true;        //上一个流程（结束后侧刷）可能执行不到，这里需要赋值
                         carWash[i].isTailProcChanged = false;
-                        water_system_control(WATER_WAXWATER, false);
+                        if(FINE_WASH == carWash[i].washMode)    water_system_control(WATER_WAX, false);
+                        else                                    water_system_control(DRYIND_AGENT, false);
                     }
                     if(!carWash[i].isCarMoveCompleteArea){
                         carWash[i].tailProc = PROC_FINISH_CLEAR_WATER;
@@ -3435,10 +3464,11 @@ bool get_is_allow_next_car_wash_flag(void)
  * @brief       赋值新订单的车辆Id
  * @param[in]	newOrderId          
  */
-void set_new_order_car_id(uint8_t newOrderId)
+void set_new_order_car_id(uint8_t newOrderId, uint8_t washMode)
 {
     if(newOrderId >= 0 && newOrderId < SUPPORT_WASH_NUM_MAX){
         entryCarIndex = newOrderId;
+        carWash[entryCarIndex].washMode = washMode;
         if(1 == entryCarIndex){         //进来的车辆是编号1，看编号2有没有车尾位置，没有则认为前面没有车
             isNewCarWash = true;
             if(carWash[2].tailPos > 0){
@@ -3629,11 +3659,11 @@ void app_crl_dev_set(Type_AppCrlObject_Enum obj, int cmd)
         water_system_control(WATER_SWING_WATER, cmd > 0 ? true : false);
         break;
     case APP_CRL_WATER_SHAMPOO:
-        water_system_control(WATER_SHAMPOO, cmd > 0 ? true : false);
-        water_system_control(WATER_SHAMPOO_PIKN, cmd > 0 ? true : false);
-        water_system_control(WATER_SHAMPOO_GREEN, cmd > 0 ? true : false);
+        // water_system_control(WATER_PREMIUM_SHAMPOO, cmd > 0 ? true : false);
+        // water_system_control(WATER_WAX, cmd > 0 ? true : false);
+        water_system_control(WATER_NORMAL_SHAMPOO, cmd > 0 ? true : false);
         break;
-    case APP_CRL_WATER_WAXWATER:    water_system_control(WATER_WAXWATER, cmd > 0 ? true : false); break;
+    case APP_CRL_WATER_WAXWATER:    water_system_control(DRYIND_AGENT, cmd > 0 ? true : false); break;
     case APP_CRL_WATER_TOP:         water_system_control(WATER_TOP, cmd > 0 ? true : false); break;
     case APP_CRL_WATER_FRONT_SIDE:  water_system_control(WATER_FRONT_SIDE, cmd > 0 ? true : false); break;
     case APP_CRL_WATER_BACK_SIDE:   water_system_control(WATER_BACK_SIDE, cmd > 0 ? true : false); break;
@@ -3781,12 +3811,12 @@ int xp_module_debug(char *type, char *fun, char *param)
             water_system_control(WATER_LOW_PUMP, atoi(param_1));
         }
         else if (strcmp(fun, "water_waxwater") == 0) {
-            water_system_control(WATER_WAXWATER, atoi(param_1));
+            water_system_control(DRYIND_AGENT, atoi(param_1));
         }
         else if (strcmp(fun, "water_shampoo") == 0) {
-            water_system_control(WATER_SHAMPOO, atoi(param_1));
-            water_system_control(WATER_SHAMPOO_PIKN, atoi(param_1));
-            water_system_control(WATER_SHAMPOO_GREEN, atoi(param_1));
+            // water_system_control(WATER_PREMIUM_SHAMPOO, atoi(param_1));
+            // water_system_control(WATER_WAX, atoi(param_1));
+            water_system_control(WATER_NORMAL_SHAMPOO, atoi(param_1));
         }
         else if (strcmp(fun, "water_top") == 0) {
             water_system_control(WATER_TOP, atoi(param_1));

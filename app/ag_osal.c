@@ -1163,8 +1163,8 @@ void xp_osal_water_system_crl_thread(void* arg)
     waterCrl.matchIo[WATER_CLEAR_CONVEYOR_L]    = BOARD4_OUTPUT_LEFT_CONVEYOR_VALVE;
     waterCrl.matchIo[WATER_CLEAR_CONVEYOR_R]    = BOARD4_OUTPUT_RIGHT_CONVEYOR_VALVE;
     //低压泵水路
-    waterCrl.matchIo[WATER_WAXWATER]            = BOARD1_OUTPUT_WAXWATER_VALVE;
-    waterCrl.matchIo[WATER_SHAMPOO]             = BOARD1_OUTPUT_SHAMPOO_WATER_VALVE;
+    waterCrl.matchIo[DRYIND_AGENT]              = BOARD1_OUTPUT_WAXWATER_VALVE;
+    waterCrl.matchIo[WATER_PREMIUM_SHAMPOO]     = BOARD1_OUTPUT_SHAMPOO_PREMIUM_VALVE;
     waterCrl.matchIo[WATER_TOP]                 = BOARD1_OUTPUT_TOP_WATER_VALVE;
     waterCrl.matchIo[WATER_FRONT_SIDE]          = BOARD1_OUTPUT_FRONT_BRUSH_WATER_VALVE;
     waterCrl.matchIo[WATER_BACK_SIDE]           = BOARD1_OUTPUT_BACK_BRUSH_WATER_VALVE;
@@ -1172,51 +1172,52 @@ void xp_osal_water_system_crl_thread(void* arg)
     // waterCrl.matchIo[WATER_CONVEYOR_2]  = BOARD1_OUTPUT_WATER_CONVEYOR_2_VALVE;
     // waterCrl.matchIo[WATER_CONVEYOR_3]  = BOARD1_OUTPUT_WATER_CONVEYOR_3_VALVE;
     // waterCrl.matchIo[WATER_MIDDLE]      = BOARD1_OUTPUT_MIDDLE_WATER_VALVE;
-    waterCrl.matchIo[WATER_SHAMPOO_PIKN]        = BOARD1_OUTPUT_SHAMPOO_PINK_VALVE;
-    waterCrl.matchIo[WATER_SHAMPOO_GREEN]       = BOARD1_OUTPUT_SHAMPOO_GREEN_VALVE;
+    waterCrl.matchIo[WATER_WAX]                 = BOARD1_OUTPUT_WAX_VALVE;
+    waterCrl.matchIo[WATER_NORMAL_SHAMPOO]      = BOARD1_OUTPUT_SHAMPOO_NORMAL_VALVE;
     waterCrl.matchIo[WATER_CLEAR_WATER]         = BOARD1_OUTPUT_CLEAR_WATER_VALVE;
-    waterCrl.matchIo[WATER_BASE_PLATE]          = BOARD1_OUTPUT_BASE_PLATE_WASH_VALVE;
+    waterCrl.matchIo[WATER_BASE_PLATE]          = BOARD4_OUTPUT_LEFT_CONVEYOR_VALVE;
     while (1)
     {
         aos_sem_wait(&waterCrl.water_sem, AOS_WAIT_FOREVER);
         memcpy(waterSta, waterCrl.waterSta, sizeof(waterCrl.waterSta));
         if(waterCrl.recordSta[WATER_DRAIN] != waterSta[WATER_DRAIN]){
             waterCrl.recordSta[WATER_DRAIN] = waterSta[WATER_DRAIN];
-            if(true == waterSta[WATER_DRAIN]){
-                isPumpWorking = false;
-                osal_dev_io_state_change(BOARD0_OUTPUT_LOW_PUMP, IO_DISABLE);
-                osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PUMP, IO_DISABLE);
-                osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PINK_PUMP, IO_DISABLE);
-                osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_GREEN_PUMP, IO_DISABLE);
-                osal_dev_io_state_change(BOARD1_OUTPUT_WAXWATER_PUMP, IO_DISABLE);
-                osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_AIR_VALVE, IO_DISABLE);
-                aos_msleep(500);
-                for (uint8_t i = 0; i < WATER_CRL_NUM; i++)
-                {
-                    if(waterCrl.matchIo[i]){
-                        osal_dev_io_state_change(waterCrl.matchIo[i], IO_DISABLE);
-                        waterCrl.recordSta[i] = false;
-                    }
-                }
-                osal_dev_io_state_change(BOARD1_OUTPUT_DRAIN_WATER_VALVE, IO_ENABLE);
-            }
-            else{
-                osal_dev_io_state_change(BOARD1_OUTPUT_DRAIN_WATER_VALVE, IO_DISABLE);
-                for (uint8_t i = 0; i < WATER_CRL_NUM; i++)
-                {
-                    if(waterCrl.matchIo[i]){
-                        osal_dev_io_state_change(waterCrl.matchIo[i], IO_DISABLE);
-                        waterCrl.recordSta[i] = false;
-                    }
-                }
-            }
+            // if(true == waterSta[WATER_DRAIN]){
+            //     isPumpWorking = false;
+            //     osal_dev_io_state_change(BOARD0_OUTPUT_LOW_PUMP, IO_DISABLE);
+            //     osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PREMIUM_PUMP, IO_DISABLE);
+            //     osal_dev_io_state_change(BOARD1_OUTPUT_WAX_PUMP, IO_DISABLE);
+            //     osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_NORMAL_PUMP, IO_DISABLE);
+            //     osal_dev_io_state_change(BOARD1_OUTPUT_WAXWATER_PUMP, IO_DISABLE);
+            //     osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_NORMAL_AIR_VALVE, IO_DISABLE);
+            //     osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_PREMIUM_AIR_VALVE, IO_DISABLE);
+            //     aos_msleep(500);
+            //     for (uint8_t i = 0; i < WATER_CRL_NUM; i++)
+            //     {
+            //         if(waterCrl.matchIo[i]){
+            //             osal_dev_io_state_change(waterCrl.matchIo[i], IO_DISABLE);
+            //             waterCrl.recordSta[i] = false;
+            //         }
+            //     }
+            //     osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_PREMIUM_AIR_VALVE, IO_ENABLE);
+            // }
+            // else{
+            //     osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_PREMIUM_AIR_VALVE, IO_DISABLE);
+            //     for (uint8_t i = 0; i < WATER_CRL_NUM; i++)
+            //     {
+            //         if(waterCrl.matchIo[i]){
+            //             osal_dev_io_state_change(waterCrl.matchIo[i], IO_DISABLE);
+            //             waterCrl.recordSta[i] = false;
+            //         }
+            //     }
+            // }
             continue;           //操作排水排气时不再操作其它，需要记录当前的水相关状态记录
         }
         
         //高压泵的水系统控制
         bool isCrlHighPumpWater = false;
         for (uint8_t i = 0; i < WATER_CRL_NUM; i++){
-            if((WATER_SWING_WATER == i || WATER_CLEAR_CONVEYOR_L == i || WATER_CLEAR_CONVEYOR_R == i)
+            if((WATER_SWING_WATER == i || WATER_BASE_PLATE == i || WATER_CLEAR_CONVEYOR_L == i || WATER_CLEAR_CONVEYOR_R == i)
             && (waterCrl.recordSta[i] != waterSta[i])){
                 waterCrl.recordSta[i] = waterSta[i];
                 isCrlHighPumpWater = true;
@@ -1248,21 +1249,24 @@ void xp_osal_water_system_crl_thread(void* arg)
                     if(true == waterSta[i]){
                         isNewWaterOpen = true;
                         //有些水路需要额外使能一些点位
-                        if(WATER_WAXWATER == i){
+                        if(DRYIND_AGENT == i){
                             osal_dev_io_state_change(BOARD1_OUTPUT_WAXWATER_PUMP, IO_ENABLE);
                             osal_dev_io_state_change(BOARD1_OUTPUT_DRIER_VALVE, IO_ENABLE);
                         }
-                        else if(WATER_SHAMPOO == i){
-                            osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PUMP, IO_ENABLE);
+                        else if(WATER_PREMIUM_SHAMPOO == i){
+                            osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PREMIUM_PUMP, IO_ENABLE);
                         }
-                        else if(WATER_SHAMPOO_PIKN == i){
-                            osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PINK_PUMP, IO_ENABLE);
+                        else if(WATER_WAX == i){
+                            osal_dev_io_state_change(BOARD1_OUTPUT_WAX_PUMP, IO_ENABLE);
                         }
-                        else if(WATER_SHAMPOO_GREEN == i){
-                            osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_GREEN_PUMP, IO_ENABLE);
+                        else if(WATER_NORMAL_SHAMPOO == i){
+                            osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_NORMAL_PUMP, IO_ENABLE);
                         }
-                        if(true == waterSta[WATER_SHAMPOO] || true == waterSta[WATER_SHAMPOO_PIKN] || true == waterSta[WATER_SHAMPOO_GREEN]){
-                            osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_AIR_VALVE, IO_ENABLE);
+                        if(true == waterSta[WATER_PREMIUM_SHAMPOO] || true == waterSta[WATER_WAX]){
+                            osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_PREMIUM_AIR_VALVE, IO_ENABLE);
+                        }
+                        else if(true == waterSta[WATER_NORMAL_SHAMPOO]){
+                            osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_NORMAL_AIR_VALVE, IO_ENABLE);
                         }
                         osal_dev_io_state_change(waterCrl.matchIo[i], IO_ENABLE);       //先开启需要开启的水路阀，保持水泵有压力释放口
                     }
@@ -1276,28 +1280,31 @@ void xp_osal_water_system_crl_thread(void* arg)
             {
                 if(waterCrl.matchIo[i] && false == waterSta[i]){
                     //有些水路需要额外使能一些点位
-                    if(WATER_WAXWATER == i){
+                    if(DRYIND_AGENT == i){
                         osal_dev_io_state_change(BOARD1_OUTPUT_WAXWATER_PUMP, IO_DISABLE);
                         osal_dev_io_state_change(BOARD1_OUTPUT_DRIER_VALVE, IO_DISABLE);
                     }
-                    else if(WATER_SHAMPOO == i){
-                        osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PUMP, IO_DISABLE);
+                    else if(WATER_PREMIUM_SHAMPOO == i){
+                        osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PREMIUM_PUMP, IO_DISABLE);
                     }
-                    else if(WATER_SHAMPOO_PIKN == i){
-                        osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PINK_PUMP, IO_DISABLE);
+                    else if(WATER_WAX == i){
+                        osal_dev_io_state_change(BOARD1_OUTPUT_WAX_PUMP, IO_DISABLE);
                     }
-                    else if(WATER_SHAMPOO_GREEN == i){
-                        osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_GREEN_PUMP, IO_DISABLE);
+                    else if(WATER_NORMAL_SHAMPOO == i){
+                        osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_NORMAL_PUMP, IO_DISABLE);
                     }
-                    if(false == waterSta[WATER_SHAMPOO] && false == waterSta[WATER_SHAMPOO_PIKN] && false == waterSta[WATER_SHAMPOO_GREEN]){
-                        osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_AIR_VALVE, IO_DISABLE);
+                    if(true == waterSta[WATER_PREMIUM_SHAMPOO]){
+                        osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_PREMIUM_AIR_VALVE, IO_DISABLE);
+                    }
+                    else if(true == waterSta[WATER_NORMAL_SHAMPOO] || true == waterSta[WATER_WAX]){
+                        osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_NORMAL_AIR_VALVE, IO_DISABLE);
                     }
                     osal_dev_io_state_change(waterCrl.matchIo[i], IO_DISABLE);
                 }
             }
 
-            if(true == waterSta[WATER_CLEAR_WATER] || true == waterSta[WATER_WAXWATER]      //清水和药剂类开启低压泵，其它水不开
-            || true == waterSta[WATER_SHAMPOO] || true == waterSta[WATER_SHAMPOO_PIKN] || true == waterSta[WATER_SHAMPOO_GREEN]){
+            if(true == waterSta[WATER_CLEAR_WATER] || true == waterSta[DRYIND_AGENT]      //清水和药剂类开启低压泵，其它水不开
+            || true == waterSta[WATER_PREMIUM_SHAMPOO] || true == waterSta[WATER_WAX] || true == waterSta[WATER_NORMAL_SHAMPOO]){
                 if(!isPumpWorking){                         //之前没开启水泵就开启水泵
                     aos_msleep(300);                        //延时一段时间后开启水泵
                     osal_dev_io_state_change(BOARD0_OUTPUT_LOW_PUMP, IO_ENABLE);
@@ -1311,11 +1318,12 @@ void xp_osal_water_system_crl_thread(void* arg)
         }
         else{
             osal_dev_io_state_change(BOARD0_OUTPUT_LOW_PUMP, IO_DISABLE);
-            osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PUMP, IO_DISABLE);
-            osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PINK_PUMP, IO_DISABLE);
-            osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_GREEN_PUMP, IO_DISABLE);
+            osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PREMIUM_PUMP, IO_DISABLE);
+            osal_dev_io_state_change(BOARD1_OUTPUT_WAX_PUMP, IO_DISABLE);
+            osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_NORMAL_PUMP, IO_DISABLE);
             osal_dev_io_state_change(BOARD1_OUTPUT_WAXWATER_PUMP, IO_DISABLE);
-            osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_AIR_VALVE, IO_DISABLE);
+            osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_NORMAL_AIR_VALVE, IO_DISABLE);
+            osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_PREMIUM_AIR_VALVE, IO_DISABLE);
             osal_dev_io_state_change(BOARD1_OUTPUT_DRIER_VALVE, IO_DISABLE);
             if(isPumpWorking){                              //水泵之前是开启的，则关泵后延时一段时间再关阀
                 isPumpWorking = false;
@@ -1350,7 +1358,7 @@ void water_system_control(Type_WaterSystem_Enum type, bool enable)
     //    osal_dev_io_state_change(BOARD1_OUTPUT_SEWAGE_PUMP, enable ? IO_ENABLE : IO_DISABLE);
     }
     else if(WATER_SHAMPOO_PUMP == type){
-       osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PUMP, enable ? IO_ENABLE : IO_DISABLE);
+       osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_PREMIUM_PUMP, enable ? IO_ENABLE : IO_DISABLE);
     }
     else if(WATER_WAXWATER_PUMP == type){
        osal_dev_io_state_change(BOARD1_OUTPUT_WAXWATER_PUMP, enable ? IO_ENABLE : IO_DISABLE);
@@ -1360,8 +1368,8 @@ void water_system_control(Type_WaterSystem_Enum type, bool enable)
             waterCrl.waterSta[WATER_SWING_WATER]        = false;
             waterCrl.waterSta[WATER_CLEAR_CONVEYOR_L]   = false;
             waterCrl.waterSta[WATER_CLEAR_CONVEYOR_R]   = false;
-            waterCrl.waterSta[WATER_WAXWATER]           = false;
-            waterCrl.waterSta[WATER_SHAMPOO]            = false;
+            waterCrl.waterSta[DRYIND_AGENT]             = false;
+            waterCrl.waterSta[WATER_PREMIUM_SHAMPOO]    = false;
             waterCrl.waterSta[WATER_TOP]                = false;
             waterCrl.waterSta[WATER_FRONT_SIDE]         = false;
             waterCrl.waterSta[WATER_BACK_SIDE]          = false;
@@ -1369,8 +1377,8 @@ void water_system_control(Type_WaterSystem_Enum type, bool enable)
         //    waterCrl.waterSta[WATER_CONVEYOR_2] = false;
         //    waterCrl.waterSta[WATER_CONVEYOR_3] = false;
         //    waterCrl.waterSta[WATER_MIDDLE]     = false;
-            waterCrl.waterSta[WATER_SHAMPOO_PIKN]       = false;
-            waterCrl.waterSta[WATER_SHAMPOO_GREEN]      = false;
+            waterCrl.waterSta[WATER_WAX]       = false;
+            waterCrl.waterSta[WATER_NORMAL_SHAMPOO]     = false;
             waterCrl.waterSta[WATER_CLEAR_WATER]        = false;
             waterCrl.waterSta[WATER_BASE_PLATE]         = false;
         }

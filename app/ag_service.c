@@ -1535,21 +1535,21 @@ static int xp_service_start_wash_ready(Type_ServiceState_Enum state)
     set_is_allow_next_car_wash_flag(false);
     xp_ag_osal_get()->screen.display(AG_CAR_WASH_STARTING);
     voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_WASH_START);
-    if(STA_IDLE == state) wash_crl_variable_init();       //待机状态启动，前面肯定没车，重置所有变量
+    if(STA_IDLE == state) wash_crl_variable_init();         //待机状态启动，前面肯定没车，重置所有变量
     carInfo.isCarInReadyArea = false;
     kvService.order.isNewOrder = true;
     if(0 == appModule.localSts.order1.orderNumber){
         appModule.localSts.order1.orderNumber = wash.orderQueue[0].numberId;
         if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_wash_flag_1", 1);
-        set_new_order_car_id(1);
+        set_new_order_car_id(1, wash.washMode);
     }
     else if(0 == appModule.localSts.order2.orderNumber){
         appModule.localSts.order2.orderNumber = wash.orderQueue[0].numberId;
         if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_wash_flag_2", 1);
-        set_new_order_car_id(2);
+        set_new_order_car_id(2, wash.washMode);
     }
     else{
-        set_new_order_car_id(0);                //编号0的Id不参与洗车流程
+        set_new_order_car_id(0, wash.washMode);             //编号0的Id不参与洗车流程
         LOG_UPLOAD("Over max order number");
         return -1;
     }
@@ -1567,9 +1567,9 @@ static void offline_payment_callback(uint8_t washMode)
 {
     switch (washMode)
     {
-    case 1: wash.washMode = NORMAL_WASH; break;
-    case 2: wash.washMode = NORMAL_WASH; break;
-    case 3: wash.washMode = NORMAL_WASH; break;
+    case 1: wash.washMode = FINE_WASH;  break;
+    case 2: wash.washMode = QUICK_WASH; break;
+    case 3: wash.washMode = NORMAL_WASH;break;
     default:
         LOG_UPLOAD("Not support this mode");
         return;
