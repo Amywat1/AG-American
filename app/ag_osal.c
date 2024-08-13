@@ -1163,7 +1163,7 @@ void xp_osal_water_system_crl_thread(void* arg)
     waterCrl.matchIo[WATER_CLEAR_CONVEYOR_L]    = BOARD4_OUTPUT_LEFT_CONVEYOR_VALVE;
     waterCrl.matchIo[WATER_CLEAR_CONVEYOR_R]    = BOARD4_OUTPUT_RIGHT_CONVEYOR_VALVE;
     //低压泵水路
-    waterCrl.matchIo[DRYIND_AGENT]              = BOARD1_OUTPUT_WAXWATER_VALVE;
+    waterCrl.matchIo[WATER_DRYIND_AGENT]              = BOARD1_OUTPUT_WAXWATER_VALVE;
     waterCrl.matchIo[WATER_PREMIUM_SHAMPOO]     = BOARD1_OUTPUT_SHAMPOO_PREMIUM_VALVE;
     waterCrl.matchIo[WATER_TOP]                 = BOARD1_OUTPUT_TOP_WATER_VALVE;
     waterCrl.matchIo[WATER_FRONT_SIDE]          = BOARD1_OUTPUT_FRONT_BRUSH_WATER_VALVE;
@@ -1249,7 +1249,7 @@ void xp_osal_water_system_crl_thread(void* arg)
                     if(true == waterSta[i]){
                         isNewWaterOpen = true;
                         //有些水路需要额外使能一些点位
-                        if(DRYIND_AGENT == i){
+                        if(WATER_DRYIND_AGENT == i){
                             osal_dev_io_state_change(BOARD1_OUTPUT_WAXWATER_PUMP, IO_ENABLE);
                             osal_dev_io_state_change(BOARD1_OUTPUT_DRIER_VALVE, IO_ENABLE);
                         }
@@ -1265,7 +1265,7 @@ void xp_osal_water_system_crl_thread(void* arg)
                         if(true == waterSta[WATER_PREMIUM_SHAMPOO] || true == waterSta[WATER_WAX]){
                             osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_PREMIUM_AIR_VALVE, IO_ENABLE);
                         }
-                        else if(true == waterSta[WATER_NORMAL_SHAMPOO]){
+                        if(true == waterSta[WATER_NORMAL_SHAMPOO]){
                             osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_NORMAL_AIR_VALVE, IO_ENABLE);
                         }
                         osal_dev_io_state_change(waterCrl.matchIo[i], IO_ENABLE);       //先开启需要开启的水路阀，保持水泵有压力释放口
@@ -1280,7 +1280,7 @@ void xp_osal_water_system_crl_thread(void* arg)
             {
                 if(waterCrl.matchIo[i] && false == waterSta[i]){
                     //有些水路需要额外使能一些点位
-                    if(DRYIND_AGENT == i){
+                    if(WATER_DRYIND_AGENT == i){
                         osal_dev_io_state_change(BOARD1_OUTPUT_WAXWATER_PUMP, IO_DISABLE);
                         osal_dev_io_state_change(BOARD1_OUTPUT_DRIER_VALVE, IO_DISABLE);
                     }
@@ -1293,17 +1293,17 @@ void xp_osal_water_system_crl_thread(void* arg)
                     else if(WATER_NORMAL_SHAMPOO == i){
                         osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_NORMAL_PUMP, IO_DISABLE);
                     }
-                    if(true == waterSta[WATER_PREMIUM_SHAMPOO]){
+                    if(false == waterSta[WATER_PREMIUM_SHAMPOO] && false == waterSta[WATER_WAX]){
                         osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_PREMIUM_AIR_VALVE, IO_DISABLE);
                     }
-                    else if(true == waterSta[WATER_NORMAL_SHAMPOO] || true == waterSta[WATER_WAX]){
+                    if(false == waterSta[WATER_NORMAL_SHAMPOO]){
                         osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_NORMAL_AIR_VALVE, IO_DISABLE);
                     }
                     osal_dev_io_state_change(waterCrl.matchIo[i], IO_DISABLE);
                 }
             }
 
-            if(true == waterSta[WATER_CLEAR_WATER] || true == waterSta[DRYIND_AGENT]      //清水和药剂类开启低压泵，其它水不开
+            if(true == waterSta[WATER_CLEAR_WATER] || true == waterSta[WATER_DRYIND_AGENT]      //清水和药剂类开启低压泵，其它水不开
             || true == waterSta[WATER_PREMIUM_SHAMPOO] || true == waterSta[WATER_WAX] || true == waterSta[WATER_NORMAL_SHAMPOO]){
                 if(!isPumpWorking){                         //之前没开启水泵就开启水泵
                     aos_msleep(300);                        //延时一段时间后开启水泵
@@ -1368,7 +1368,7 @@ void water_system_control(Type_WaterSystem_Enum type, bool enable)
             waterCrl.waterSta[WATER_SWING_WATER]        = false;
             waterCrl.waterSta[WATER_CLEAR_CONVEYOR_L]   = false;
             waterCrl.waterSta[WATER_CLEAR_CONVEYOR_R]   = false;
-            waterCrl.waterSta[DRYIND_AGENT]             = false;
+            waterCrl.waterSta[WATER_DRYIND_AGENT]             = false;
             waterCrl.waterSta[WATER_PREMIUM_SHAMPOO]    = false;
             waterCrl.waterSta[WATER_TOP]                = false;
             waterCrl.waterSta[WATER_FRONT_SIDE]         = false;
