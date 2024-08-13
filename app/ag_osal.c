@@ -62,6 +62,7 @@ typedef struct {
     bool                    isFirstSwitch;      //是否首次切换状态
 
     bool                    isTriggerEnable;    //是否使能引脚触发
+    bool                    haveEncode;         //是否有码盘脉冲信号
     uint16_t                triggerTime;        //触发时间
     Type_OutputIo_Enum      ioIndexTrig;        //触发引脚
 
@@ -128,7 +129,7 @@ typedef enum {
 
 // Type_IoTriggerInfo_Def      triggerIo[TRIGGER_IO_NUM] = {0};
 
-//电机驱动的设备注册表（没有脉冲计数的电机 .moveInfo.limitMode 限位模式统一设为 MODE_SIGNAL_LIMIT 用以区分有无脉冲计数电机）
+//电机驱动的设备注册表
 static Type_MotorInfo_Def MotorDev_Table[] = {
     //负责旋转，无位移的电机（汇川变频器驱动）
     [0] = {                             //左前刷旋转
@@ -178,6 +179,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
 
         .moveInfo.state          = MOTOR_STA_IDLE,
         .moveInfo.isFirstSwitch  = true,
+        .moveInfo.haveEncode     = true,
         .moveInfo.actionOverTime = MOVE_FOREVER,
         .moveInfo.limitMode      = MODE_SIGNAL_LIMIT,
         .moveInfo.limtMinPos     = 0,
@@ -197,6 +199,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
 
         .moveInfo.state          = MOTOR_STA_IDLE,
         .moveInfo.isFirstSwitch  = true,
+        .moveInfo.haveEncode     = true,
         .moveInfo.actionOverTime = MOVE_FOREVER,
         .moveInfo.limitMode      = MODE_SIGNAL_LIMIT,
         .moveInfo.limtMinPos     = 0,
@@ -216,6 +219,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
 
         .moveInfo.state          = MOTOR_STA_IDLE,
         .moveInfo.isFirstSwitch  = true,
+        .moveInfo.haveEncode     = true,
         .moveInfo.actionOverTime = MOVE_FOREVER,
         .moveInfo.limitMode      = MODE_SIGNAL_LIMIT,
         .moveInfo.limtMinPos     = 0,
@@ -235,6 +239,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
 
         .moveInfo.state          = MOTOR_STA_IDLE,
         .moveInfo.isFirstSwitch  = true,
+        .moveInfo.haveEncode     = true,
         .moveInfo.actionOverTime = 20000,
         .moveInfo.limitMode      = MODE_SIGNAL_LIMIT,
         .moveInfo.limtMinPos     = 0,
@@ -258,6 +263,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
 
         .moveInfo.state          = MOTOR_STA_IDLE,
         .moveInfo.isFirstSwitch  = true,
+        .moveInfo.haveEncode     = true,
         .moveInfo.actionOverTime = 15000,
         .moveInfo.limitMode      = MODE_SOFT_LIMIT_MAX,
         .moveInfo.limtMinPos     = 0,
@@ -279,6 +285,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
 
         .moveInfo.state          = MOTOR_STA_IDLE,
         .moveInfo.isFirstSwitch  = true,
+        .moveInfo.haveEncode     = true,
         .moveInfo.actionOverTime = 15000,
         .moveInfo.limitMode      = MODE_SOFT_LIMIT_MAX,
         .moveInfo.limtMinPos     = 0,
@@ -300,6 +307,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
 
         .moveInfo.state          = MOTOR_STA_IDLE,
         .moveInfo.isFirstSwitch  = true,
+        .moveInfo.haveEncode     = true,
         .moveInfo.actionOverTime = 15000,
         .moveInfo.limitMode      = MODE_SOFT_LIMIT_MAX,
         .moveInfo.limtMinPos     = 0,
@@ -321,6 +329,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
 
         .moveInfo.state          = MOTOR_STA_IDLE,
         .moveInfo.isFirstSwitch  = true,
+        .moveInfo.haveEncode     = true,
         .moveInfo.actionOverTime = 15000,
         .moveInfo.limitMode      = MODE_SOFT_LIMIT_MAX,
         .moveInfo.limtMinPos     = 0,
@@ -342,6 +351,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
 
         .moveInfo.state          = MOTOR_STA_IDLE,
         .moveInfo.isFirstSwitch  = true,
+        .moveInfo.haveEncode     = false,
         .moveInfo.actionOverTime = 10000,
         .moveInfo.limitMode      = MODE_SIGNAL_LIMIT,
         .moveInfo.limtMinPos     = 0,
@@ -363,6 +373,7 @@ static Type_MotorInfo_Def MotorDev_Table[] = {
 
         .moveInfo.state          = MOTOR_STA_IDLE,
         .moveInfo.isFirstSwitch  = true,
+        .moveInfo.haveEncode     = false,
         .moveInfo.actionOverTime = 10000,
         .moveInfo.limitMode      = MODE_SIGNAL_LIMIT,
         .moveInfo.limtMinPos     = 0,
@@ -2162,7 +2173,7 @@ void xp_osal_dev_run_thread(void* arg)
             }
 
             //无脉冲计数的电机跳过后面的判定
-            if(ACTION_TYPE_ROTATION == pMotor->actionType || pMotor->moveInfo.limitMode == MODE_SIGNAL_LIMIT){
+            if(ACTION_TYPE_ROTATION == pMotor->actionType || pMotor->moveInfo.haveEncode == false){
                 continue;
             }
             devPos = xp_osal_get_dev_pos(pMotor->drvIndex);
@@ -2196,14 +2207,14 @@ void xp_osal_dev_run_thread(void* arg)
                     if(osal_error_upload != NULL){
                         switch (pMotor->drvIndex)
                         {
-                        case CONVEYOR_1_MATCH_ID:       osal_error_upload(8112, true);   break;
-                        case CONVEYOR_2_MATCH_ID:       osal_error_upload(8113, true);   break;
-                        case CONVEYOR_3_MATCH_ID:       osal_error_upload(8114, true);   break;
-                        case LIFTER_MATCH_ID:           osal_error_upload(300, true);    break;
-                        case FRONT_LEFT_MOVE_MATCH_ID:  osal_error_upload(8225, true);   break;
-                        case FRONT_RIGHT_MOVE_MATCH_ID: osal_error_upload(8226, true);   break;
-                        case BACK_LEFT_MOVE_MATCH_ID:   osal_error_upload(8227, true);   break;
-                        case BACK_RIGHT_MOVE_MATCH_ID:  osal_error_upload(8228, true);   break;
+                        case CONVEYOR_1_MATCH_ID:       osal_error_upload(8112, true);  break;
+                        case CONVEYOR_2_MATCH_ID:       osal_error_upload(8113, true);  break;
+                        case CONVEYOR_3_MATCH_ID:       osal_error_upload(8114, true);  break;
+                        case LIFTER_MATCH_ID:           osal_error_upload(300, true);   break;
+                        case FRONT_LEFT_MOVE_MATCH_ID:  osal_error_upload(310, true);   break;
+                        case FRONT_RIGHT_MOVE_MATCH_ID: osal_error_upload(311, true);   break;
+                        case BACK_LEFT_MOVE_MATCH_ID:   osal_error_upload(312, true);   break;
+                        case BACK_RIGHT_MOVE_MATCH_ID:  osal_error_upload(313, true);   break;
                         default:
                             break;
                         }

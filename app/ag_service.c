@@ -258,6 +258,7 @@ typedef struct{
     int                     startFrontBrush;
     int                     startBackBrush;
     int                     startWaxwater;
+    int                     startClearWater;
     int                     startDrying;
     int                     endHighPump;
     int                     endSkirtBrush;
@@ -266,6 +267,7 @@ typedef struct{
     int                     endFrontBrush;
     int                     endBackBrush;
     int                     endWaxwater;
+    int                     endClearWater;
     int                     endDrying;
     bool                    powerOnReset;
     RTC_time                time;
@@ -327,6 +329,8 @@ static Type_KvDataMap_Def KvDataMap_Table[] = {
     {CMD_BACK_BRUSH_END_POS,        "epBBrush",     &kvService.endBackBrush,        &appModule.localCmd.adjust.backBrushEndPos,     sizeof(kvService.endBackBrush),     0xFF},
     {CMD_WAXWATER_START_POS,        "spWaxwater",   &kvService.startWaxwater,       &appModule.localCmd.adjust.waxwaterStartPos,    sizeof(kvService.startWaxwater),    0xFF},
     {CMD_WAXWATER_END_POS,          "epWaxwater",   &kvService.endWaxwater,         &appModule.localCmd.adjust.waxwaterEndPos,      sizeof(kvService.endWaxwater),      0xFF},
+    {CMD_CLEAR_WATER_START_POS,     "spClearwater", &kvService.startClearWater,     &appModule.localCmd.adjust.clearWaterStartPos,  sizeof(kvService.startClearWater),  0xFF},
+    {CMD_CLEAR_WATER_END_POS,       "epClearwater", &kvService.endClearWater,       &appModule.localCmd.adjust.clearWaterEndPos,    sizeof(kvService.endClearWater),    0xFF},
     {CMD_DRYER_START_POS,           "spDryer",      &kvService.startDrying,         &appModule.localCmd.adjust.dryerStartPos,       sizeof(kvService.startDrying),      0xFF},
     {CMD_DRYER_END_POS,             "epDryer",      &kvService.endDrying,           &appModule.localCmd.adjust.dryerEndPos,         sizeof(kvService.endDrying),        0xFF},
     {CMD_NULL,                      "powerOnReset", &kvService.powerOnReset,        NULL,   sizeof(kvService.powerOnReset),         0xFF},
@@ -347,6 +351,7 @@ static int set_kv_default_value(void)
     kvService.startFrontBrush       = 360;
     kvService.startBackBrush        = 550;
     kvService.startWaxwater         = 650;
+    kvService.startClearWater       = 750;
     kvService.startDrying           = 900;
     kvService.endHighPump           = 30;
     kvService.endSkirtBrush         = 110;
@@ -355,6 +360,7 @@ static int set_kv_default_value(void)
     kvService.endFrontBrush         = 460;
     kvService.endBackBrush          = 700;
     kvService.endWaxwater           = 720;
+    kvService.endClearWater         = 820;
     kvService.endDrying             = 1180;
     kvService.powerOnReset          = false;
     //日期不用恢复默认值，线程里获取时间更新
@@ -1096,6 +1102,8 @@ void model_cmd_executed_thread(void *arg)
                     else if(CMD_FRONT_BRUSH_END_POS == cmd.cmd_id)      get_washProcPos_Obj()->endFrontBrush    = appModule.localCmd.adjust.frontBrushTailEndPos;
                     else if(CMD_WAXWATER_START_POS == cmd.cmd_id)       get_washProcPos_Obj()->startWaxwater    = appModule.localCmd.adjust.waxwaterStartPos;
                     else if(CMD_WAXWATER_END_POS == cmd.cmd_id)         get_washProcPos_Obj()->endWaxwater      = appModule.localCmd.adjust.waxwaterEndPos;
+                    else if(CMD_CLEAR_WATER_START_POS == cmd.cmd_id)    get_washProcPos_Obj()->startClearWater  = appModule.localCmd.adjust.clearWaterStartPos;
+                    else if(CMD_CLEAR_WATER_END_POS == cmd.cmd_id)      get_washProcPos_Obj()->endClearWater    = appModule.localCmd.adjust.clearWaterEndPos;
                     else if(CMD_DRYER_START_POS == cmd.cmd_id)          get_washProcPos_Obj()->startDrying      = appModule.localCmd.adjust.dryerStartPos;
                     else if(CMD_DRYER_END_POS == cmd.cmd_id)            get_washProcPos_Obj()->endDrying        = appModule.localCmd.adjust.dryerEndPos;
                     break;

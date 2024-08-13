@@ -392,7 +392,7 @@ void xp_iot_data_register_thread(void *arg)
     // }
     
     //重启标志
-    err &= IOT_ADD_PROPERTY_NODE("sts_reboot_flag",		localModelSts->rebootFlag,		TYPE_Bool,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE("sts_reboot_flag",		        localModelSts->rebootFlag,		TYPE_Bool,	0,	0);
 
 //=============================================读写类点位================================================
     err &= IOT_ADD_PROPERTY_NODE("cmd_new_order",	            localModelCmd->newOrder,        TYPE_Int,   -1,	CMD_NEW_ORDER);
@@ -495,6 +495,8 @@ void xp_iot_data_register_thread(void *arg)
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_back_end",	        localModelCmd->adjust.backBrushEndPos,          TYPE_Int,	-1,	CMD_BACK_BRUSH_END_POS);
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_waxwater_start",	localModelCmd->adjust.waxwaterStartPos,         TYPE_Int,	-1,	CMD_WAXWATER_START_POS);
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_waxwater_end",	    localModelCmd->adjust.waxwaterEndPos,           TYPE_Int,	-1,	CMD_WAXWATER_END_POS);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_clear_water_start",localModelCmd->adjust.clearWaterStartPos,       TYPE_Int,	-1,	CMD_CLEAR_WATER_START_POS);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_clear_water_end",	localModelCmd->adjust.clearWaterEndPos,         TYPE_Int,	-1,	CMD_CLEAR_WATER_END_POS);
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_dryer_start",	    localModelCmd->adjust.dryerStartPos,            TYPE_Int,	-1,	CMD_DRYER_START_POS);
     err &= IOT_ADD_PROPERTY_NODE("cmd_adjust_pos_dryer_end",	    localModelCmd->adjust.dryerEndPos,              TYPE_Int,	-1,	CMD_DRYER_END_POS);
     //其它

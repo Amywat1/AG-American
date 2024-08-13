@@ -253,6 +253,8 @@ typedef struct{
     int backBrushEndPos;
     int waxwaterStartPos;
     int waxwaterEndPos;
+    int clearWaterStartPos;
+    int clearWaterEndPos;
     int dryerStartPos;
     int dryerEndPos;
     // int completeAreaHeadStopPos;
@@ -444,6 +446,8 @@ typedef enum{
     CMD_FRONT_BRUSH_END_POS,
     CMD_WAXWATER_START_POS,
     CMD_WAXWATER_END_POS,
+    CMD_CLEAR_WATER_START_POS,
+    CMD_CLEAR_WATER_END_POS,
     CMD_DRYER_START_POS,
     CMD_DRYER_END_POS,
     //其它

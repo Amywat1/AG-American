@@ -156,6 +156,7 @@ typedef enum {
 	PROC_START_FRONT_BRUSH,             //开始前侧刷
 	PROC_START_BACK_BRUSH,              //开始后侧刷
 	PROC_START_WAXWATER,                //开始蜡水
+	PROC_START_CLEAR_WATER,             //开始清水
 	PROC_START_DYRING,                  //开始吹风
     PROC_FINISH_HIGH_PUMP,              //结束高压水
     PROC_FINISH_SKIRT_BRUSH,            //结束裙边刷
@@ -164,6 +165,7 @@ typedef enum {
 	PROC_FINISH_FRONT_BRUSH,            //结束前侧刷
 	PROC_FINISH_BACK_BRUSH,             //结束后侧刷
 	PROC_FINISH_WAXWAT,                 //结束蜡水
+	PROC_FINISH_CLEAR_WATER,            //结束清水
 	PROC_FINISH_DYRING,                 //结束吹风
 } Type_ProcType_Enum;
 
@@ -1502,7 +1504,7 @@ static int module_side_brush_both_move_to_position(Type_SideBrushPos_Enum pos)
         //毛刷移动过程中，如果有一个毛刷压力过大，则回零，避免在洗车头或车尾的时候，毛刷吃毛过深，导致挤停
         if(brush[BRUSH_FRONT_LEFT].current > (brush[BRUSH_FRONT_LEFT].pressWarning) || brush[BRUSH_FRONT_RIGHT].current > brush[BRUSH_FRONT_RIGHT].pressWarning
         || is_signal_filter_trigger(SIGNAL_FL_BRUSH_CROOKED) || is_signal_filter_trigger(SIGNAL_FR_BRUSH_CROOKED)){
-            err_need_flag_handle()->isDetectBrushCroooked = false;  //侧刷触压值过大或触发前后歪时不检测，等待开位后检测
+            // err_need_flag_handle()->isDetectBrushCroooked = false;  //侧刷触压值过大或触发前后歪时不检测，等待开位后检测（全程检测，避免用户直接往前开）
             isSideBrushCantMoveToPose = true;
             LOG_UPLOAD("Side brush current too high, can not move to target position, jump to move zero");
             stepSta.isModuleDriverExecuted = false;
@@ -1792,7 +1794,6 @@ int step_dev_wash(uint8_t *completeId)
 
     printCnt++;
     *completeId = 0;        //初始赋值为0，若有完成的订单，赋值完成的车辆Id
-    workAreaConveyorEnc = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
 
     //这里必须等待清脉冲结束在运行流程，否则会造成位置识别错误
     if(!isClearConveyorEncFinish){
@@ -1812,6 +1813,8 @@ int step_dev_wash(uint8_t *completeId)
         isNewCarWash = false;
     }
     
+    workAreaConveyorEnc = xp_osal_get_dev_pos(CONVEYOR_2_MATCH_ID);
+
     //记录车头车尾位置
     if(isNewCarReadyWash){
         if(0 == carWash[entryCarIndex].headPos && get_diff_ms(carWashStartTimeStamp) > 120000){
@@ -1844,8 +1847,8 @@ int step_dev_wash(uint8_t *completeId)
                 }
             }
         }
-        // else if(workAreaConveyorEnc - carWash[entryCarIndex].headPos > CAR_MIN_LENGTH){  //车头过一段距离后再检测车尾
-        else{       //避免车辆闯入时车尾信息检测延迟，检测完车头直接检测车尾
+        else if(workAreaConveyorEnc - carWash[entryCarIndex].headPos > 100){  //车头过一段距离后再检测车尾
+        // else{       //避免车辆闯入时车尾信息检测延迟，检测完车头直接检测车尾
             if(carWash[entryCarIndex].headPos != 0 && 0 == carWash[entryCarIndex].tailPos){   //有车头位置信息才赋值车尾位置
                 //入口光电未遮挡后，记录当前车尾坐标（只记录临时值，避免检测异常，不是真的车尾）
                 if(isCarMoveToWash){
@@ -1853,7 +1856,7 @@ int step_dev_wash(uint8_t *completeId)
                     catrTailTempPos = workAreaConveyorEnc;
                 }
                 //经过一段时间入口光电状态一直都是未遮挡则认为之前是真的车尾，赋值车尾坐标，否则重新修改临时车尾坐标值
-                if(get_diff_ms(carTailLeaveEntrenceTimeStamp) > 1500){
+                if(get_diff_ms(carTailLeaveEntrenceTimeStamp) > 3000){
                     carWash[entryCarIndex].tailPos = catrTailTempPos;   //记录车尾位置
                     LOG_UPLOAD("Car index %d, head pos %d, tail pos %d", entryCarIndex, carWash[entryCarIndex].headPos, carWash[entryCarIndex].tailPos);
                     isNewCarReadyWash = false;
@@ -1989,8 +1992,9 @@ int step_dev_wash(uint8_t *completeId)
             }
 
             //根据当前车头进入入口光电的距离判定当前处于什么流程（洗车车顶之后的流程不允许按位置距离跳跃）
-            if(carWash[i].headProc == PROC_START_WAXWATER && carWash[i].headOffsetPos > washProcPos.startDrying)                        carWash[i].headProc = PROC_START_DYRING;
-            else if(carWash[i].headProc == PROC_START_BACK_BRUSH && carWash[i].headOffsetPos > washProcPos.startWaxwater)               carWash[i].headProc = PROC_START_WAXWATER;
+            if(carWash[i].headProc == PROC_START_CLEAR_WATER && carWash[i].headOffsetPos > washProcPos.startDrying)                 carWash[i].headProc = PROC_START_DYRING;
+            else if(carWash[i].headProc == PROC_START_WAXWATER && carWash[i].headOffsetPos > washProcPos.startClearWater)           carWash[i].headProc = PROC_START_CLEAR_WATER;
+            else if(carWash[i].headProc == PROC_START_BACK_BRUSH && carWash[i].headOffsetPos > washProcPos.startWaxwater)           carWash[i].headProc = PROC_START_WAXWATER;
             else if(carWash[i].headProc == PROC_START_FRONT_BRUSH && carWash[i].headOffsetPos > washProcPos.startBackBrush
             && (1 == washCarNum || (washCarNum > 1 && carWash[headWashCarId].isBackBrushFinish))){                  //多辆车时后车必需等待前车洗完车尾再开始流程
                 carWash[i].headProc = PROC_START_BACK_BRUSH;
@@ -2285,6 +2289,11 @@ int step_dev_wash(uint8_t *completeId)
                 if(carWash[i].isHeadProcChanged){
                     carWash[i].isHeadProcChanged = false;
                     water_system_control(WATER_WAXWATER, true);
+                }
+                break;
+            case PROC_START_CLEAR_WATER:     //开始进程喷清水
+                if(carWash[i].isHeadProcChanged){
+                    carWash[i].isHeadProcChanged = false;
                     water_system_control(WATER_CLEAR_WATER, true);
                 }
                 break;
@@ -2307,7 +2316,8 @@ int step_dev_wash(uint8_t *completeId)
                     LOG_UPLOAD("Car Index %d relative tail entry pos %d", i, carWash[i].tailOffsetPos);
                 }
                 //根据当前车尾离开入口光电的距离判定当前处于什么流程（不允许按位置距离位置跳跃步骤）
-                if(carWash[i].tailProc == PROC_FINISH_WAXWAT && carWash[i].tailOffsetPos > washProcPos.endDrying && !is_signal_filter_trigger(SIGNAL_EXIT)) carWash[i].tailProc = PROC_FINISH_DYRING;
+                if(carWash[i].tailProc == PROC_FINISH_CLEAR_WATER && carWash[i].tailOffsetPos > washProcPos.endDrying && !is_signal_filter_trigger(SIGNAL_EXIT)) carWash[i].tailProc = PROC_FINISH_DYRING;
+                else if(carWash[i].tailProc == PROC_FINISH_WAXWAT && carWash[i].tailOffsetPos > washProcPos.endClearWater)      carWash[i].tailProc = PROC_FINISH_CLEAR_WATER;
                 else if(carWash[i].tailProc == PROC_FINISH_BACK_BRUSH && carWash[i].tailOffsetPos > washProcPos.endWaxwater)    carWash[i].tailProc = PROC_FINISH_WAXWAT;
                 else if(carWash[i].tailProc == PROC_FINISH_FRONT_BRUSH && carWash[i].tailOffsetPos > washProcPos.endBackBrush)  carWash[i].tailProc = PROC_FINISH_BACK_BRUSH;
                 else if(carWash[i].tailProc == PROC_FINISH_TOP_BRUSH && carWash[i].tailOffsetPos > washProcPos.endFrontBrush)   carWash[i].tailProc = PROC_FINISH_FRONT_BRUSH;
@@ -2577,6 +2587,14 @@ int step_dev_wash(uint8_t *completeId)
                         carWash[i].isBackBrushFinish = true;        //上一个流程（结束后侧刷）可能执行不到，这里需要赋值
                         carWash[i].isTailProcChanged = false;
                         water_system_control(WATER_WAXWATER, false);
+                    }
+                    if(!carWash[i].isCarMoveCompleteArea){
+                        carWash[i].tailProc = PROC_FINISH_CLEAR_WATER;
+                    }
+                    break;
+                case PROC_FINISH_CLEAR_WATER:                       //结束清水
+                    if(carWash[i].isTailProcChanged){
+                        carWash[i].isTailProcChanged = false;
                         water_system_control(WATER_CLEAR_WATER, false);
                     }
                     if(!carWash[i].isCarMoveCompleteArea){
@@ -3043,6 +3061,7 @@ void side_brush_follow_thread(void *arg)
 void brush_current_update_thread(void *arg)
 {
     uint8_t logCnt = 0;
+    bool isBrushRun[BRUSH_NUM] = {0};
 
     while (1)
     {
@@ -3058,9 +3077,14 @@ void brush_current_update_thread(void *arg)
             else if(4 == i) brushMatchId = BACK_RIGHT_BRUSH_MATCH_ID;
             else            brushMatchId = TOP_BRUSH_MATCH_ID;
             
-            current = xp_ag_osal_get()->freq.getCurrent(brushMatchId);
-            brush[i].current = (!is_dev_move_sta_idle(brushMatchId) && get_diff_ms(cmdExeSta[brushMatchId].cmdStartTimeStamp) > 1800
-                            && current > 0) ? current : 0;
+            isBrushRun[i] = (!is_dev_move_sta_idle(brushMatchId) && get_diff_ms(cmdExeSta[brushMatchId].cmdStartTimeStamp) > 1800) ? true : false;
+            if(isBrushRun[i]){
+                current = xp_ag_osal_get()->freq.getCurrent(brushMatchId);
+                brush[i].current = (current > 0) ? current : 0;
+            }
+            else{
+                brush[i].current = 0;
+            }
             aos_msleep(1);
         }
         // uint64_t diffTime = get_diff_ms(timeStamp);
@@ -3102,16 +3126,15 @@ void brush_current_update_thread(void *arg)
                 break;
             }
             if(brush[i].current > brush[i].pressWarning){
-                brush[i].pressTooHighCnt++;
-                if((brush[i].pressTooHighCnt > 1500 / BRUSH_CURRENT_UPDATE_THREAD_FREQ && isLimitTrigger)
-                || (brush[i].pressTooHighCnt > get_error_overtime(errCodeIndex) / BRUSH_CURRENT_UPDATE_THREAD_FREQ)){
+                if((get_diff_ms(brush[i].pressTooHighTimeStamp) > 1500 && isLimitTrigger)
+                || (get_diff_ms(brush[i].pressTooHighTimeStamp) > get_error_overtime(errCodeIndex))){
                     set_error_state(errCodeIndex, true);
                     LOG_UPLOAD("%s over press, current %d baseCurrent %d L %d H %d", 
                     xp_get_brush_str(i), brush[i].current, brush[i].baseCurrent, brush[i].pressL, brush[i].pressH);
                 }
             }
             else{
-                brush[i].pressTooHighCnt = 0;
+                brush[i].pressTooHighTimeStamp = aos_now_ms();
             }
         }
         aos_msleep(BRUSH_CURRENT_UPDATE_THREAD_FREQ);
@@ -3399,12 +3422,13 @@ void set_is_allow_next_car_wash_flag(bool value)
 }
 
 /**
- * @brief       获取当前是否允许下一辆车进入工作区洗车标志
+ * @brief       获取当前是否允许下一辆车进入：首先防闯光电未触发，且前面没车在洗，防追尾和出口光电都未触发或者前面有车，前车洗完车尾
  * @return      bool                
  */
 bool get_is_allow_next_car_wash_flag(void)
 {
-    return isAllowNextCarInWorkArea;
+    return (isAllowNextCarInWorkArea && !is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE)
+        && (washCarNum > 0 || (0 == washCarNum && !is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT) && !is_signal_filter_trigger(SIGNAL_EXIT)))) ? true : false;
 }
 
 /**

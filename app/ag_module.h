@@ -114,7 +114,8 @@ typedef struct{
 	int16_t 				pressProtect;       //保护值，>该值需有保护性动作（如停止龙门移动）
 	int16_t 				pressWarning;       //告警电流，>该值退出洗车流程并告警
 
-    uint8_t 				pressTooHighCnt;    //触压异常计数值
+    uint64_t 				pressTooLowTimeStamp;     //触压电流过小时间戳
+    uint64_t 				pressTooHighTimeStamp;    //触压电流过大时间戳
 
 	Type_BrushRunMode_Enum	runMode;			//跟随状态
 
@@ -130,6 +131,7 @@ typedef struct{
     uint16_t startFrontBrush;
     uint16_t startBackBrush;
     uint16_t startWaxwater;
+    uint16_t startClearWater;
     uint16_t startDrying;
     uint16_t endHighPump;
     uint16_t endSkirtBrush;
@@ -138,6 +140,7 @@ typedef struct{
     uint16_t endFrontBrush;
     uint16_t endBackBrush;
     uint16_t endWaxwater;
+    uint16_t endClearWater;
     uint16_t endDrying;
 } Type_CarProcPosInfo_Def;
 

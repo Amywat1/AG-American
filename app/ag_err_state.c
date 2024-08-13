@@ -92,7 +92,7 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     // {8105,   false,      false,      0,      500,                500,                E_WARNING}, //相序报警
     {8106,   false,      false,      0,      5000,               500,                E_WARNING}, //水压不足
     {8107,   false,      false,      0,      500,                500,                E_WARNING}, //高度超高
-    {8108,   false,      false,      0,      1500,               500,                E_WARNING}, //顶刷旋转电流超高
+    {8108,   false,      false,      0,      2000,               500,                E_WARNING}, //顶刷旋转电流超高
     {8109,   false,      false,      0,      500,                500,                E_WARNING}, //车头位置丢失报警（侧刷合30S未检测到车头）
     {8110,   false,      false,      0,      500,                500,                E_WARNING}, //前侧刷启动时低位报警（洗车头过程中侧刷合检测）
     {8111,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //洗车超时报警
@@ -108,10 +108,10 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     {8116,   false,      false,      0,      500,                500,                E_ERROR},   //1#道闸开关同时亮
     {8117,   false,      false,      0,      500,                500,                E_ERROR},   //2#道闸开关同时亮
     {8118,   false,      false,      0,      500,                500,                E_ERROR},   //顶刷上下同时亮
-    {8119,   false,      false,      0,      1500,               500,                E_ERROR},   //左前刷旋转电流异常
-    {8120,   false,      false,      0,      1500,               500,                E_ERROR},   //右前刷旋转电流异常
-    {8121,   false,      false,      0,      1500,               500,                E_ERROR},   //左后刷旋转电流异常
-    {8122,   false,      false,      0,      1500,               500,                E_ERROR},   //右后刷旋转电流异常
+    {8119,   false,      false,      0,      2000,               500,                E_ERROR},   //左前刷旋转电流异常
+    {8120,   false,      false,      0,      2000,               500,                E_ERROR},   //右前刷旋转电流异常
+    {8121,   false,      false,      0,      2000,               500,                E_ERROR},   //左后刷旋转电流异常
+    {8122,   false,      false,      0,      2000,               500,                E_ERROR},   //右后刷旋转电流异常
     // {8123,   false,      false,      0,      500,                500,                E_WARNING}, //后裙边电机过载（报警但延迟停机）
     // {8124,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //左后裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
     // {8125,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //右后裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
@@ -119,8 +119,8 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     {273,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //用户使用手机APP停止
     {300,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //顶刷计数异常
     {309,    false,      false,      0,      2000,               NDEFINE_TIME,       E_ERROR},   //毛刷跟随异常
-    // {310,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //左前刷计数异常
-    // {311,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //右前刷计数异常
+    {310,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //左前刷计数异常
+    {311,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //右前刷计数异常
     {312,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //左后刷计数异常
     {313,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //右后刷计数异常
     {500,    false,      false,      0,      1000,               NDEFINE_TIME,       E_ERROR},   //第一块子板掉线
@@ -275,7 +275,6 @@ static bool check_ag_error(bool isEmc){
         else if(get_error_state(8058)) vfdDetectCnt = BACK_RIGHT_BRUSH_MATCH_ID;
         else if(get_error_state(8064)) vfdDetectCnt = CONVEYOR_1_MATCH_ID;
         else if(get_error_state(8065)) vfdDetectCnt = CONVEYOR_2_MATCH_ID;
-        else if(get_error_state(8066)) vfdDetectCnt = CONVEYOR_3_MATCH_ID;
         else if(get_error_state(8066)) vfdDetectCnt = CONVEYOR_3_MATCH_ID;
         else{
             vfdDetectCnt = (vfdDetectCnt < VFD_NUM - 1) ? ++vfdDetectCnt : 0;
