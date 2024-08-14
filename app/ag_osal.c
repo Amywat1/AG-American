@@ -1163,7 +1163,7 @@ void xp_osal_water_system_crl_thread(void* arg)
     waterCrl.matchIo[WATER_CLEAR_CONVEYOR_L]    = BOARD4_OUTPUT_LEFT_CONVEYOR_VALVE;
     waterCrl.matchIo[WATER_CLEAR_CONVEYOR_R]    = BOARD4_OUTPUT_RIGHT_CONVEYOR_VALVE;
     //低压泵水路
-    waterCrl.matchIo[WATER_DRYIND_AGENT]              = BOARD1_OUTPUT_WAXWATER_VALVE;
+    waterCrl.matchIo[WATER_DRYIND_AGENT]        = BOARD1_OUTPUT_WAXWATER_VALVE;
     waterCrl.matchIo[WATER_PREMIUM_SHAMPOO]     = BOARD1_OUTPUT_SHAMPOO_PREMIUM_VALVE;
     waterCrl.matchIo[WATER_TOP]                 = BOARD1_OUTPUT_TOP_WATER_VALVE;
     waterCrl.matchIo[WATER_FRONT_SIDE]          = BOARD1_OUTPUT_FRONT_BRUSH_WATER_VALVE;
@@ -1242,6 +1242,9 @@ void xp_osal_water_system_crl_thread(void* arg)
         bool isNewWaterOpen = false;                    //看是否有新的阀需要开启
         for (uint8_t i = 0; i < WATER_CRL_NUM; i++)
         {
+            if(WATER_SWING_WATER == i || WATER_BASE_PLATE == i || WATER_CLEAR_CONVEYOR_L == i || WATER_CLEAR_CONVEYOR_R == i){
+                continue;
+            }
             if(waterCrl.matchIo[i]){
                 isWaterOpen |= waterSta[i];
                 if(waterCrl.recordSta[i] != waterSta[i]){
@@ -1262,7 +1265,7 @@ void xp_osal_water_system_crl_thread(void* arg)
                         else if(WATER_NORMAL_SHAMPOO == i){
                             osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_NORMAL_PUMP, IO_ENABLE);
                         }
-                        if(true == waterSta[WATER_PREMIUM_SHAMPOO] || true == waterSta[WATER_WAX]){
+                        if(true == waterSta[WATER_PREMIUM_SHAMPOO]){
                             osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_PREMIUM_AIR_VALVE, IO_ENABLE);
                         }
                         if(true == waterSta[WATER_NORMAL_SHAMPOO]){
@@ -1278,6 +1281,9 @@ void xp_osal_water_system_crl_thread(void* arg)
             if(isNewWaterOpen)  aos_msleep(200);            //有新水路开时，延时一段时间再关闭不开的水路，避免水路切换瞬间所有水路阀都关闭
             for (uint8_t i = 0; i < WATER_CRL_NUM; i++)
             {
+                if(WATER_SWING_WATER == i || WATER_BASE_PLATE == i || WATER_CLEAR_CONVEYOR_L == i || WATER_CLEAR_CONVEYOR_R == i){
+                    continue;
+                }
                 if(waterCrl.matchIo[i] && false == waterSta[i]){
                     //有些水路需要额外使能一些点位
                     if(WATER_DRYIND_AGENT == i){
@@ -1293,7 +1299,7 @@ void xp_osal_water_system_crl_thread(void* arg)
                     else if(WATER_NORMAL_SHAMPOO == i){
                         osal_dev_io_state_change(BOARD1_OUTPUT_SHAMPOO_NORMAL_PUMP, IO_DISABLE);
                     }
-                    if(false == waterSta[WATER_PREMIUM_SHAMPOO] && false == waterSta[WATER_WAX]){
+                    if(false == waterSta[WATER_PREMIUM_SHAMPOO]){
                         osal_dev_io_state_change(BOARD0_OUTPUT_SHAMPOO_PREMIUM_AIR_VALVE, IO_DISABLE);
                     }
                     if(false == waterSta[WATER_NORMAL_SHAMPOO]){
@@ -1368,7 +1374,7 @@ void water_system_control(Type_WaterSystem_Enum type, bool enable)
             waterCrl.waterSta[WATER_SWING_WATER]        = false;
             waterCrl.waterSta[WATER_CLEAR_CONVEYOR_L]   = false;
             waterCrl.waterSta[WATER_CLEAR_CONVEYOR_R]   = false;
-            waterCrl.waterSta[WATER_DRYIND_AGENT]             = false;
+            waterCrl.waterSta[WATER_DRYIND_AGENT]       = false;
             waterCrl.waterSta[WATER_PREMIUM_SHAMPOO]    = false;
             waterCrl.waterSta[WATER_TOP]                = false;
             waterCrl.waterSta[WATER_FRONT_SIDE]         = false;
@@ -1377,7 +1383,7 @@ void water_system_control(Type_WaterSystem_Enum type, bool enable)
         //    waterCrl.waterSta[WATER_CONVEYOR_2] = false;
         //    waterCrl.waterSta[WATER_CONVEYOR_3] = false;
         //    waterCrl.waterSta[WATER_MIDDLE]     = false;
-            waterCrl.waterSta[WATER_WAX]       = false;
+            waterCrl.waterSta[WATER_WAX]                = false;
             waterCrl.waterSta[WATER_NORMAL_SHAMPOO]     = false;
             waterCrl.waterSta[WATER_CLEAR_WATER]        = false;
             waterCrl.waterSta[WATER_BASE_PLATE]         = false;

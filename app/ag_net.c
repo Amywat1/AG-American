@@ -427,6 +427,10 @@ void xp_iot_data_register_thread(void *arg)
     err &= IOT_ADD_PROPERTY_NODE("cmd_water_shampoo",	        localModelCmd->shampoo,             TYPE_Bool,	-1,	CMD_WATER_SHAMPOO);
     err &= IOT_ADD_PROPERTY_NODE("cmd_water_waxwater",	        localModelCmd->waxWater,            TYPE_Bool,	-1,	CMD_WATER_WAXWATER);
     err &= IOT_ADD_PROPERTY_NODE("cmd_water_top",	            localModelCmd->topWater,            TYPE_Bool,	-1,	CMD_WATER_TOP);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_water_clear",	            localModelCmd->clearWater,          TYPE_Bool,	-1,	CMD_WATER_CLEAR);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_water_coating_film",	    localModelCmd->coatingFilmWater,    TYPE_Bool,	-1,	CMD_WATER_COATING_FILM);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_water_base_plate",	    localModelCmd->basePlateWater,      TYPE_Bool,	-1,	CMD_WATER_BASE_PLATE);
+    err &= IOT_ADD_PROPERTY_NODE("cmd_water_premium_shampoo",	localModelCmd->premiumShampoo,      TYPE_Bool,	-1,	CMD_WATER_PREMIUM_SHAMPOO);
     err &= IOT_ADD_PROPERTY_NODE("cmd_water_front_brush",	    localModelCmd->frontSideWater,      TYPE_Bool,	-1,	CMD_WATER_FRONT_SIDE);
     err &= IOT_ADD_PROPERTY_NODE("cmd_water_back_brush",	    localModelCmd->backSideWater,       TYPE_Bool,	-1,	CMD_WATER_BACK_SIDE);
     err &= IOT_ADD_PROPERTY_NODE("cmd_skirt_brush_out",	        localModelCmd->skirtBrushOut,       TYPE_Bool,	-1,	CMD_SKIRT_BRUSH_MOVE);

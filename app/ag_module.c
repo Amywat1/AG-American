@@ -3661,11 +3661,15 @@ void app_crl_dev_set(Type_AppCrlObject_Enum obj, int cmd)
         // water_system_control(WATER_WAX, cmd > 0 ? true : false);
         water_system_control(WATER_NORMAL_SHAMPOO, cmd > 0 ? true : false);
         break;
-    case APP_CRL_WATER_WAXWATER:    water_system_control(WATER_DRYIND_AGENT, cmd > 0 ? true : false); break;
-    case APP_CRL_WATER_TOP:         water_system_control(WATER_TOP, cmd > 0 ? true : false); break;
-    case APP_CRL_WATER_FRONT_SIDE:  water_system_control(WATER_FRONT_SIDE, cmd > 0 ? true : false); break;
-    case APP_CRL_WATER_BACK_SIDE:   water_system_control(WATER_BACK_SIDE, cmd > 0 ? true : false); break;
-    case APP_CRL_SKIRT_BRUSH_MOVE:  osal_dev_io_state_change(BOARD0_OUTPUT_SKIRT_BRUSH_VALVE, cmd > 0 ? IO_ENABLE : IO_DISABLE); break;
+    case APP_CRL_WATER_WAXWATER:        water_system_control(WATER_DRYIND_AGENT, cmd > 0 ? true : false); break;
+    case APP_CRL_WATER_TOP:             water_system_control(WATER_TOP, cmd > 0 ? true : false); break;
+    case APP_CRL_WATER_CLEAR:           water_system_control(WATER_CLEAR_WATER, cmd > 0 ? true : false); break;
+    case APP_CRL_WATER_COATING_FILM:    water_system_control(WATER_WAX, cmd > 0 ? true : false); break;
+    case APP_CRL_WATER_BASE_PLATE:      water_system_control(WATER_BASE_PLATE, cmd > 0 ? true : false); break;
+    case APP_CRL_WATER_PREMIUM_SHAMPOO: water_system_control(WATER_PREMIUM_SHAMPOO, cmd > 0 ? true : false); break;
+    case APP_CRL_WATER_FRONT_SIDE:      water_system_control(WATER_FRONT_SIDE, cmd > 0 ? true : false); break;
+    case APP_CRL_WATER_BACK_SIDE:       water_system_control(WATER_BACK_SIDE, cmd > 0 ? true : false); break;
+    case APP_CRL_SKIRT_BRUSH_MOVE:      osal_dev_io_state_change(BOARD0_OUTPUT_SKIRT_BRUSH_VALVE, cmd > 0 ? IO_ENABLE : IO_DISABLE); break;
     case APP_CRL_SKIRT_BRUSH_ROTATIN:
         osal_dev_io_state_change(BOARD4_OUTPUT_LEFT_SKIRT_ROTATION, cmd > 0 ? IO_ENABLE : IO_DISABLE);
         osal_dev_io_state_change(BOARD4_OUTPUT_RIGHT_SKIRT_ROTATION, cmd > 0 ? IO_ENABLE : IO_DISABLE); 

@@ -301,6 +301,10 @@ typedef struct{
     bool shampoo;
     bool waxWater;
     bool topWater;
+    bool clearWater;
+    bool coatingFilmWater;
+    bool basePlateWater;
+    bool premiumShampoo;
     bool frontSideWater;
     bool backSideWater;
     bool skirtBrushOut;
@@ -375,6 +379,10 @@ typedef enum{
     CMD_WATER_SHAMPOO,
     CMD_WATER_WAXWATER,
     CMD_WATER_TOP,
+    CMD_WATER_CLEAR,
+    CMD_WATER_COATING_FILM,
+    CMD_WATER_BASE_PLATE,
+    CMD_WATER_PREMIUM_SHAMPOO,
     CMD_WATER_FRONT_SIDE,
     CMD_WATER_BACK_SIDE,
     CMD_SKIRT_BRUSH_MOVE,
