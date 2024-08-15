@@ -96,7 +96,7 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     {8109,   false,      false,      0,      500,                500,                E_WARNING}, //车头位置丢失报警（侧刷合30S未检测到车头）
     {8110,   false,      false,      0,      500,                500,                E_WARNING}, //前侧刷启动时低位报警（洗车头过程中侧刷合检测）
     {8111,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //洗车超时报警
-    {8112,   false,      false,      0,      500,                500,                E_NOTICE},  //1#输送带码盘开关故障
+    // {8112,   false,      false,      0,      500,                500,                E_NOTICE},  //1#输送带码盘开关故障
     {8113,   false,      false,      0,      500,                500,                E_ERROR},   //2#输送带码盘开关故障
     {8114,   false,      false,      0,      500,                500,                E_ERROR},   //3#输送带码盘开关故障
     {8115,   false,      false,      0,      500,                500,                E_NOTICE},  //工作区防追尾被遮挡（待机的时候超10S报警）

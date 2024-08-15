@@ -2000,7 +2000,10 @@ int step_dev_wash(uint8_t *completeId)
 
             //根据当前车头进入入口光电的距离判定当前处于什么流程（洗车车顶之后的流程不允许按位置距离跳跃）
             if(carWash[i].headProc == PROC_START_CLEAR_WATER && carWash[i].headOffsetPos > washProcPos.startDrying)                 carWash[i].headProc = PROC_START_DYRING;
-            else if(carWash[i].headProc == PROC_START_WAXWATER && carWash[i].headOffsetPos > washProcPos.startClearWater)           carWash[i].headProc = PROC_START_CLEAR_WATER;
+            else if(carWash[i].headProc == PROC_START_WAXWATER && carWash[i].headOffsetPos > washProcPos.startClearWater){
+                LOG_UPLOAD(">>>>>Bug test Index %d, headOffsetPos %d, 1#enc %d, 2#enc %d, change head proc %d", i, carWash[i].headOffsetPos, xp_osal_get_dev_pos(CONVEYOR_1_MATCH_ID), workAreaConveyorEnc, PROC_START_CLEAR_WATER);
+                carWash[i].headProc = PROC_START_CLEAR_WATER;
+            }
             else if(carWash[i].headProc == PROC_START_BACK_BRUSH && carWash[i].headOffsetPos > washProcPos.startWaxwater)           carWash[i].headProc = PROC_START_WAXWATER;
             else if(carWash[i].headProc == PROC_START_FRONT_BRUSH && carWash[i].headOffsetPos > washProcPos.startBackBrush
             && (1 == washCarNum || (washCarNum > 1 && carWash[headWashCarId].isBackBrushFinish))){                  //多辆车时后车必需等待前车洗完车尾再开始流程
