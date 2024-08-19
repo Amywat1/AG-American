@@ -1160,8 +1160,9 @@ void xp_osal_water_system_crl_thread(void* arg)
     /* 只赋值相应的水路IO，其它水系统控制类型保持默认值0 */
     /* 高压泵水路 */
     waterCrl.matchIo[WATER_SWING_WATER]         = BOARD4_OUTPUT_SWING_VALVE;
-    waterCrl.matchIo[WATER_CLEAR_CONVEYOR_L]    = BOARD4_OUTPUT_LEFT_CONVEYOR_VALVE;
-    waterCrl.matchIo[WATER_CLEAR_CONVEYOR_R]    = BOARD4_OUTPUT_RIGHT_CONVEYOR_VALVE;
+    // waterCrl.matchIo[WATER_CLEAR_CONVEYOR_L]    = BOARD4_OUTPUT_LEFT_CONVEYOR_VALVE;
+    // waterCrl.matchIo[WATER_CLEAR_CONVEYOR_R]    = BOARD4_OUTPUT_RIGHT_CONVEYOR_VALVE;
+    waterCrl.matchIo[WATER_BASE_PLATE]          = BOARD4_OUTPUT_LEFT_CONVEYOR_VALVE;
     //低压泵水路
     waterCrl.matchIo[WATER_DRYIND_AGENT]        = BOARD1_OUTPUT_WAXWATER_VALVE;
     waterCrl.matchIo[WATER_PREMIUM_SHAMPOO]     = BOARD1_OUTPUT_SHAMPOO_PREMIUM_VALVE;
@@ -1175,7 +1176,6 @@ void xp_osal_water_system_crl_thread(void* arg)
     waterCrl.matchIo[WATER_WAX]                 = BOARD1_OUTPUT_WAX_VALVE;
     waterCrl.matchIo[WATER_NORMAL_SHAMPOO]      = BOARD1_OUTPUT_SHAMPOO_NORMAL_VALVE;
     waterCrl.matchIo[WATER_CLEAR_WATER]         = BOARD1_OUTPUT_CLEAR_WATER_VALVE;
-    waterCrl.matchIo[WATER_BASE_PLATE]          = BOARD4_OUTPUT_LEFT_CONVEYOR_VALVE;
     while (1)
     {
         aos_sem_wait(&waterCrl.water_sem, AOS_WAIT_FOREVER);
@@ -1217,7 +1217,7 @@ void xp_osal_water_system_crl_thread(void* arg)
         //高压泵的水系统控制
         bool isCrlHighPumpWater = false;
         for (uint8_t i = 0; i < WATER_CRL_NUM; i++){
-            if((WATER_SWING_WATER == i || WATER_BASE_PLATE == i || WATER_CLEAR_CONVEYOR_L == i || WATER_CLEAR_CONVEYOR_R == i)
+            if((WATER_SWING_WATER == i || WATER_BASE_PLATE == i)
             && (waterCrl.recordSta[i] != waterSta[i])){
                 waterCrl.recordSta[i] = waterSta[i];
                 isCrlHighPumpWater = true;
@@ -1228,7 +1228,9 @@ void xp_osal_water_system_crl_thread(void* arg)
                     osal_dev_io_state_change(BOARD0_OUTPUT_HIGH_PUMP, IO_ENABLE);
                 }
                 else{
-                    osal_dev_io_state_change(BOARD0_OUTPUT_HIGH_PUMP, IO_DISABLE);
+                    if(false == waterCrl.recordSta[WATER_SWING_WATER] && false == waterCrl.recordSta[WATER_BASE_PLATE]){
+                        osal_dev_io_state_change(BOARD0_OUTPUT_HIGH_PUMP, IO_DISABLE);
+                    }
                     aos_msleep(500);
                     if(WATER_SWING_WATER == i) osal_dev_io_state_change(BOARD4_OUTPUT_TOP_SWING, IO_DISABLE);
                     osal_dev_io_state_change(waterCrl.matchIo[i], IO_DISABLE);
@@ -1337,6 +1339,9 @@ void xp_osal_water_system_crl_thread(void* arg)
             }
             for (uint8_t i = 0; i < WATER_CRL_NUM; i++)
             {
+                if(WATER_SWING_WATER == i || WATER_BASE_PLATE == i || WATER_CLEAR_CONVEYOR_L == i || WATER_CLEAR_CONVEYOR_R == i){
+                    continue;
+                }
                 if(waterCrl.matchIo[i]){
                     osal_dev_io_state_change(waterCrl.matchIo[i], IO_DISABLE);
                     waterCrl.recordSta[i] = false;
@@ -2190,6 +2195,7 @@ void xp_osal_dev_run_thread(void* arg)
             if(ACTION_TYPE_ROTATION == pMotor->actionType || pMotor->moveInfo.haveEncode == false){
                 continue;
             }
+            if(CONVEYOR_1_MATCH_ID == pMotor->drvIndex) continue;       //用不到1号输送带脉冲，不检测
             devPos = xp_osal_get_dev_pos(pMotor->drvIndex);
             /* 码盘计数异常检测（电机在运动过程中多次检测码盘值无变化或非运动状态下多次检测码盘值变化，认为异常） */
             if(MOTOR_STA_MOVE == pMotor->moveInfo.state || MOTOR_STA_MOVE_FORE == pMotor->moveInfo.state 

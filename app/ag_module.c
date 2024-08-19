@@ -1834,7 +1834,6 @@ int step_dev_wash(uint8_t *completeId)
                     carWash[entryCarIndex].headPos = workAreaConveyorEnc;   //记录车头位置
                     LOG_UPLOAD("Car index %d, head pos %d", entryCarIndex, carWash[entryCarIndex].headPos);
                     water_system_control(WATER_SWING_WATER, true);
-                    if(FINE_WASH == carWash[entryCarIndex].washMode)    water_system_control(WATER_BASE_PLATE, true);
                     brush[BRUSH_TOP].isReadyCalibrate           = false;
                     brush[BRUSH_TOP].isCalibrated               = false;
                     brush[BRUSH_FRONT_LEFT].isReadyCalibrate    = false;
@@ -2029,6 +2028,7 @@ int step_dev_wash(uint8_t *completeId)
                         //流程跳跃则补全跳过流程的动作
                         osal_dev_io_state_change(BOARD0_OUTPUT_SKIRT_BRUSH_VALVE, IO_ENABLE);
                         if(FINE_WASH == carWash[i].washMode){
+                            water_system_control(WATER_BASE_PLATE, true);
                             water_system_control(WATER_PREMIUM_SHAMPOO, true);
                         }
                         else{
@@ -2199,6 +2199,7 @@ int step_dev_wash(uint8_t *completeId)
                         osal_dev_io_state_change(BOARD4_OUTPUT_RIGHT_SKIRT_ROTATION, IO_ENABLE);
                         osal_dev_io_state_change(BOARD0_OUTPUT_SKIRT_BRUSH_VALVE, IO_ENABLE);
                         if(FINE_WASH == carWash[i].washMode){
+                            water_system_control(WATER_BASE_PLATE, true);
                             water_system_control(WATER_PREMIUM_SHAMPOO, true);
                         }
                         else{
@@ -2213,7 +2214,7 @@ int step_dev_wash(uint8_t *completeId)
                     return ERR_TIMEOUT;
                 }
                 break;
-            case PROC_START_FRONT_BRUSH:                        //开始进程前侧刷洗
+            case PROC_START_FRONT_BRUSH:                            //开始进程前侧刷洗
                 if(carWash[i].isHeadProcChanged){
                     if(!brush[BRUSH_FRONT_LEFT].isCalibrated || !brush[BRUSH_FRONT_RIGHT].isCalibrated){
                         return -7;

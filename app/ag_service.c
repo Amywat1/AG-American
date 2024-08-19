@@ -441,6 +441,7 @@ static int xp_read_kv_value(void)
     get_washProcPos_Obj()->startFrontBrush  = appModule.localCmd.adjust.frontBrushStartPos;
     get_washProcPos_Obj()->startBackBrush   = appModule.localCmd.adjust.backBrushStartPos;
     get_washProcPos_Obj()->startWaxwater    = appModule.localCmd.adjust.waxwaterStartPos;
+    get_washProcPos_Obj()->startClearWater  = appModule.localCmd.adjust.clearWaterStartPos;
     get_washProcPos_Obj()->startDrying      = appModule.localCmd.adjust.dryerStartPos;
     get_washProcPos_Obj()->endHighPump      = appModule.localCmd.adjust.highPressEndPos;
     get_washProcPos_Obj()->endSkirtBrush    = appModule.localCmd.adjust.skirtBrushEndPos;
@@ -449,6 +450,7 @@ static int xp_read_kv_value(void)
     get_washProcPos_Obj()->endFrontBrush    = appModule.localCmd.adjust.frontBrushTailEndPos;
     get_washProcPos_Obj()->endBackBrush     = appModule.localCmd.adjust.backBrushEndPos;
     get_washProcPos_Obj()->endWaxwater      = appModule.localCmd.adjust.waxwaterEndPos;
+    get_washProcPos_Obj()->endClearWater    = appModule.localCmd.adjust.clearWaterEndPos;
     get_washProcPos_Obj()->endDrying        = appModule.localCmd.adjust.dryerEndPos;
 }
 
@@ -1059,6 +1061,8 @@ void model_cmd_executed_thread(void *arg)
         case CMD_FRONT_BRUSH_END_POS:
         case CMD_WAXWATER_START_POS:
         case CMD_WAXWATER_END_POS:
+        case CMD_CLEAR_WATER_START_POS:
+        case CMD_CLEAR_WATER_END_POS:
         case CMD_DRYER_START_POS:
         case CMD_DRYER_END_POS:
             for (uint8_t i = 0; i < sizeof(KvDataMap_Table) / sizeof(KvDataMap_Table[0]); i++)
@@ -1686,7 +1690,7 @@ void xp_service_thread(void* arg)
                         isCarBeReady = true;
                         carBeReadyTimeStamp = aos_now_ms();
                     }
-                    else if(get_diff_ms(carBeReadyTimeStamp) > 3000){
+                    else if(get_diff_ms(carBeReadyTimeStamp) > 4000){
                         startWashFlag = true;
                     }
                 // }
