@@ -1576,7 +1576,7 @@ static void offline_payment_callback(uint8_t washMode)
     switch (washMode)
     {
     case 1: wash.washMode = FINE_WASH;  break;
-    case 2: wash.washMode = QUICK_WASH; break;
+    case 2: wash.washMode = NORMAL_WASH;break;
     case 3: wash.washMode = NORMAL_WASH;break;
     default:
         LOG_UPLOAD("Not support this mode");
