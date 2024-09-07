@@ -202,7 +202,7 @@ static int xp_read_kv_value(void);
 
 int xp_service_init(void)
 {
-    xp_logSwitch_set(true);                 //开启SD卡日志记录
+    xp_logSwitch_set(false);                //关闭SD卡日志记录
     while(!xp_ag_osal_get()->init){         //需先等子板的脉冲计数相关引脚赋值完成，再进行子板初始化，不然无法注册成功
         aos_msleep(500);
         LOG_INFO("Wait osal init...");
@@ -210,7 +210,7 @@ int xp_service_init(void)
     if(xp_io_manage_init(BOARD_NUMS - 1) != 0){
         LOG_WARN("IO board init failed !");
     }
-    xp_wdg_init(20, 2);
+    xp_wdg_init_ms(2, 500);
     xp_remoteCmd_init(DEVICE_AG);
     xp_service_module_init();
     xp_read_kv_value();

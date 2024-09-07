@@ -22,7 +22,7 @@
 #include "../../../../1km/driver/voice/dl485_fl.h"
  // #include "../../../1km/driver/sensor/pt100-485/pt100_485.h"
 
-#define USE_ONBOARD_VOICE           (1)
+#define USE_ONBOARD_VOICE           (0)
 #define USE_DL485_VOICE             (1)
 #define NULL_ENCODER                (0xFFFFFFFF)    //未获取码盘脉冲值时的返回值
 #define NONE_REG_INFO               (0xFF)          //无注册信息
