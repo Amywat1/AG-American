@@ -1409,7 +1409,7 @@ void water_system_control(Type_WaterSystem_Enum type, bool enable)
 Type_SignalStaInfo_Def SignalInfo_Table[] = {
 //  信号类型                     //对应的检测引脚                         //信号状态       //信号确认次数、靠近时的位置、离开时的位置
     {SIGNAL_GROUND,             BOARD4_INPUT_RESERVE_1,                 SIGNAL_STABLE,  20,   0,  0},
-    {SIGNAL_ALL_IN,             BOARD4_INPUT_ALL_IN_SIGNAL,             SIGNAL_STABLE,  20,   0,  0},
+    {SIGNAL_ALL_IN,             BOARD4_INPUT_ALL_IN_SIGNAL,             SIGNAL_STABLE,  10,   0,  0},       //全进光电检测时间比停车、入口光电时间短，避免超长车辆误判
     {SIGNAL_LEFT_SKEW,          BOARD4_INPUT_STOP_LEFT_SKEW,            SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_RIGHT_SKEW,         BOARD4_INPUT_STOP_RIGHT_SKEW,           SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_SUPER_HIGH,         BOARD4_INPUT_SUPER_HIGH,                SIGNAL_STABLE,  20,   0,  0},

@@ -1183,6 +1183,7 @@ void ready_area_detection_thread(void *arg)
     bool isPlayForwardVoice = false;
     uint8_t longCarTryCnt = 0;
     bool isCarTooLongTriggerEntrance = false;
+    bool isStateChange = false;
 
     while(1){
         if(wash.state != STA_IDLE && wash.state != STA_RUN && !wash.isWarningErr){    //非待机和运行状态下，不检测预备区车辆信息，洗车过程中有收到警告错误暂停接待后续车辆
@@ -1275,10 +1276,11 @@ void ready_area_detection_thread(void *arg)
             if(longCarTryCnt >= 3 || is_signal_filter_trigger(SIGNAL_ALL_IN)){
                 if(is_signal_filter_trigger(SIGNAL_ENTRANCE)){
                     isCarTooLongTriggerEntrance = true;
-                    if(longCarTryCnt < 3) carInfo.parkState = PARK_EMPTY; //清除状态，使后面显示正确
+                    if(longCarTryCnt < 3 && isStateChange) carInfo.parkState = PARK_EMPTY; //清除状态，使后面显示正确
                     longCarTryCnt = 3;      //全进、停车、入口光电全部触发直接显示超长
                 }
                 else if(isCarTooLongTriggerEntrance){
+                    isStateChange = true;
                     longCarTryCnt++;
                     isCarTooLongTriggerEntrance = false;
                 }
@@ -1302,6 +1304,10 @@ void ready_area_detection_thread(void *arg)
                         voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_TOO_LONG);
                     }
                     carInfo.parkStaStartT = aos_now_ms();
+                }
+                if(isCarTooLongTriggerEntrance){                    //这里逻辑需要重新梳理一下（目的想让三个光电同时触发报超长后还有机会重试）
+                    isStateChange = false;
+                    longCarTryCnt = 0;
                 }
                 carInfo.parkState = PARK_TOO_LONG;
             }
@@ -1465,7 +1471,7 @@ static int xp_service_set_state(Type_ServiceState_Enum state)
             osal_set_dev_limit_mode(BACK_LEFT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, 110);
             osal_set_dev_limit_mode(BACK_RIGHT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, 110);
             //异常停止后清除所有订单
-            memset(wash.orderQueue, 0, sizeof(wash.orderQueue));
+            // memset(wash.orderQueue, 0, sizeof(wash.orderQueue));
         }
         else{
             osal_set_dev_limit_mode(BACK_LEFT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, 60);
