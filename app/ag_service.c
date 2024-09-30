@@ -1195,6 +1195,10 @@ void ready_area_detection_thread(void *arg)
         if(true == get_new_car_ready_wash_falg()){  //已经有车准备进入工作区清洗则暂停预备区停车检测
             isCarEntryWorkArea = true;
             carInfo.isAllowToWash = false;          //车辆刚进入时不允许其它车启动
+            if(!is_signal_filter_trigger(SIGNAL_ALL_IN) && !is_signal_filter_trigger(SIGNAL_GATE_1_CLOSE)
+            && is_dev_move_sta_idle(GATE_1_MACH_ID)){
+                gate_change_state(CRL_SECTION_1, GATE_CLOSE);
+            }
             aos_msleep(500);
             continue;
         }
@@ -1272,8 +1276,8 @@ void ready_area_detection_thread(void *arg)
         else if(is_signal_filter_trigger(SIGNAL_STOP)){
             carInReadyAreaTimeStamp = aos_now_ms();
             isPlayForwardVoice = true;
-            //判断当前停车位置是否合适
-            if(longCarTryCnt >= 3 || is_signal_filter_trigger(SIGNAL_ALL_IN)){
+            //判断当前停车位置是否合适（不做超长判定，超长也洗）
+            /* if(longCarTryCnt >= 3 || is_signal_filter_trigger(SIGNAL_ALL_IN)){
                 if(is_signal_filter_trigger(SIGNAL_ENTRANCE)){
                     isCarTooLongTriggerEntrance = true;
                     if(longCarTryCnt < 3 && isStateChange) carInfo.parkState = PARK_EMPTY; //清除状态，使后面显示正确
@@ -1311,7 +1315,9 @@ void ready_area_detection_thread(void *arg)
                 }
                 carInfo.parkState = PARK_TOO_LONG;
             }
-            else if(is_signal_filter_trigger(SIGNAL_ENTRANCE)){      //停车光电和入口光电都触发，说明停车太靠前
+            else  */
+            if(is_signal_filter_trigger(SIGNAL_ENTRANCE) 
+            && !is_signal_filter_trigger(SIGNAL_ALL_IN)){      //停车光电和入口光电都触发，说明停车太靠前
                 isCarTooLongTriggerEntrance = true;
                 if(PARK_TOO_FRONT != carInfo.parkState){
                     carInfo.voiceCnt = 0;
@@ -1777,7 +1783,7 @@ void xp_service_thread(void* arg)
                 }
             }
 
-            //待机状态检测防追尾光电若灭10S以上，则认为异常，转入异常状态
+            /* //待机状态检测防追尾光电若灭10S以上，则认为异常，转入异常状态
             if(is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){
                 if(signalTriggerCnt++ > 100){
                     xp_service_set_state(STA_EXCEPTION);
@@ -1786,7 +1792,7 @@ void xp_service_thread(void* arg)
             }
             else{
                 signalTriggerCnt = 0;
-            }
+            } */
             break;
 
         case STA_RUN:
@@ -1952,8 +1958,8 @@ void xp_service_thread(void* arg)
                 && !is_signal_filter_trigger(SIGNAL_FL_COLLISION) && !is_signal_filter_trigger(SIGNAL_FR_COLLISION)
                 && !is_signal_filter_trigger(SIGNAL_BL_COLLISION) && !is_signal_filter_trigger(SIGNAL_BR_COLLISION)
                 && !is_signal_filter_trigger(SIGNAL_ENTRANCE) && !is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE) 
-                && !is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT) && !is_signal_filter_trigger(SIGNAL_EXIT) 
-                && !is_signal_filter_trigger(SIGNAL_FINISH)){
+                && !is_signal_filter_trigger(SIGNAL_EXIT) && !is_signal_filter_trigger(SIGNAL_FINISH)){
+                /* && !is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT) && !is_signal_filter_trigger(SIGNAL_EXIT)  */
                     xp_service_set_state(STA_RECOVER);
                     isAutoResetDev = false;
                 }

@@ -1799,6 +1799,7 @@ int step_dev_wash(uint8_t *completeId)
     static uint32_t recordWorkAreaConveyorEnc = 0;
     static int32_t recordLifterPosValue = 0;
     static uint8_t waitOverCnt = 0;
+    static uint8_t procCheckCnt[SUPPORT_WASH_NUM_MAX] = {0};
 
     printCnt++;
     *completeId = 0;        //初始赋值为0，若有完成的订单，赋值完成的车辆Id
@@ -1852,6 +1853,7 @@ int step_dev_wash(uint8_t *completeId)
                     // set_error_state(8126, false);
                     recordWorkAreaConveyorEnc = 0;
                     recordLifterPosValue = 0;
+                    procCheckCnt[entryCarIndex] = 0;
                 }
             }
         }
@@ -1926,7 +1928,8 @@ int step_dev_wash(uint8_t *completeId)
     //只有在前车流程没到风干步骤前，满足防追尾条件，认为是两辆车，允许触发防追尾（在完成区洗完的车会清除该车的所有信息，不算前车）
     if(carWash[headWashCarId].headProc < PROC_START_DYRING){
         if(is_signal_filter_trigger(SIGNAL_FINISH)){
-            if(is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT) && !is_signal_filter_trigger(SIGNAL_EXIT)){
+            // if(is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT) && !is_signal_filter_trigger(SIGNAL_EXIT)){
+            if(carWash[headWashCarId].headOffsetPos >= washProcPos.startWaxwater && !is_signal_filter_trigger(SIGNAL_EXIT)){
                 carProtectTimeStamp = aos_now_ms();
                 if(!isRearEndProtect){
                     isRearEndProtect = true;
@@ -2020,13 +2023,22 @@ int step_dev_wash(uint8_t *completeId)
             //根据当前车头进入入口光电的距离判定当前处于什么流程（洗车车顶之后的流程不允许按位置距离跳跃）
             if(carWash[i].headProc == PROC_START_CLEAR_WATER && carWash[i].headOffsetPos > washProcPos.startDrying)                 carWash[i].headProc = PROC_START_DYRING;
             else if(carWash[i].headProc == PROC_START_WAXWATER && carWash[i].headOffsetPos > washProcPos.startClearWater){
+                procCheckCnt[i]++;
                 LOG_UPLOAD(">>>>>Bug test Index %d, headOffsetPos %d, 1#enc %d, 2#enc %d, change head proc %d", i, carWash[i].headOffsetPos, xp_osal_get_dev_pos(CONVEYOR_1_MATCH_ID), workAreaConveyorEnc, PROC_START_CLEAR_WATER);
-                carWash[i].headProc = PROC_START_CLEAR_WATER;
+                if(procCheckCnt[i] > 10){
+                    carWash[i].headProc = PROC_START_CLEAR_WATER;
+                    procCheckCnt[i] = 0;
+                }
             }
             else if(carWash[i].headProc == PROC_START_BACK_BRUSH && carWash[i].headOffsetPos > washProcPos.startWaxwater)           carWash[i].headProc = PROC_START_WAXWATER;
             else if(carWash[i].headProc == PROC_START_FRONT_BRUSH && carWash[i].headOffsetPos > washProcPos.startBackBrush
             && (1 == washCarNum || (washCarNum > 1 && carWash[headWashCarId].isBackBrushFinish))){                  //多辆车时后车必需等待前车洗完车尾再开始流程
-                carWash[i].headProc = PROC_START_BACK_BRUSH;
+                procCheckCnt[i]++;
+                LOG_UPLOAD(">>>>>Bug test check cnt %d, Index %d, headOffsetPos %d, change head proc %d", procCheckCnt[i], i, carWash[i].headOffsetPos, PROC_START_BACK_BRUSH);
+                if(procCheckCnt[i] > 10){
+                    carWash[i].headProc = PROC_START_BACK_BRUSH;
+                    procCheckCnt[i] = 0;
+                }
             }
             // 前刷启动的流程用毛刷压力值去判定，不用脉冲值（车在输送带上可能打滑）
             // else if(carWash[i].headProc < PROC_START_FRONT_BRUSH && carWash[i].headOffsetPos > washProcPos.startFrontBrush)carWash[i].headProc = PROC_START_FRONT_BRUSH;
@@ -2368,7 +2380,14 @@ int step_dev_wash(uint8_t *completeId)
                 if(carWash[i].tailProc == PROC_FINISH_CLEAR_WATER && carWash[i].tailOffsetPos > washProcPos.endDrying && !is_signal_filter_trigger(SIGNAL_EXIT)) carWash[i].tailProc = PROC_FINISH_DYRING;
                 else if(carWash[i].tailProc == PROC_FINISH_WAXWAT && carWash[i].tailOffsetPos > washProcPos.endClearWater)      carWash[i].tailProc = PROC_FINISH_CLEAR_WATER;
                 else if(carWash[i].tailProc == PROC_FINISH_BACK_BRUSH && carWash[i].tailOffsetPos > washProcPos.endWaxwater)    carWash[i].tailProc = PROC_FINISH_WAXWAT;
-                else if(carWash[i].tailProc == PROC_FINISH_FRONT_BRUSH && carWash[i].tailOffsetPos > washProcPos.endBackBrush)  carWash[i].tailProc = PROC_FINISH_BACK_BRUSH;
+                else if(carWash[i].tailProc == PROC_FINISH_FRONT_BRUSH && carWash[i].tailOffsetPos > washProcPos.endBackBrush){
+                    procCheckCnt[i]++;
+                    LOG_UPLOAD(">>>>>Bug test check cnt %d, Index %d, tailOffsetPos %d, change tail proc %d", procCheckCnt[i], i, carWash[i].tailOffsetPos, PROC_FINISH_BACK_BRUSH);
+                    if(procCheckCnt[i] > 10){
+                        carWash[i].tailProc = PROC_FINISH_BACK_BRUSH;
+                        procCheckCnt[i] = 0;
+                    }
+                }
                 else if(carWash[i].tailProc == PROC_FINISH_TOP_BRUSH && carWash[i].tailOffsetPos > washProcPos.endFrontBrush)   carWash[i].tailProc = PROC_FINISH_FRONT_BRUSH;
                 else if(carWash[i].tailProc == PROC_FINISH_SHAMPOO && carWash[i].tailOffsetPos > washProcPos.endTopBrush)       carWash[i].tailProc = PROC_FINISH_TOP_BRUSH;
                 else if(carWash[i].tailProc == PROC_FINISH_SKIRT_BRUSH && carWash[i].tailOffsetPos > washProcPos.endShampoo)    carWash[i].tailProc = PROC_FINISH_SHAMPOO;
@@ -3483,7 +3502,8 @@ void set_is_allow_next_car_wash_flag(bool value)
 bool get_is_allow_next_car_wash_flag(void)
 {
     return (isAllowNextCarInWorkArea && !is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE)
-        && (washCarNum > 0 || (0 == washCarNum && !is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT) && !is_signal_filter_trigger(SIGNAL_EXIT)))) ? true : false;
+        && (washCarNum > 0 || (0 == washCarNum && !is_signal_filter_trigger(SIGNAL_EXIT)))) ? true : false;
+        // && (washCarNum > 0 || (0 == washCarNum && !is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT) && !is_signal_filter_trigger(SIGNAL_EXIT)))) ? true : false;
 }
 
 /**
