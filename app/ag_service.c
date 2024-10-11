@@ -1314,24 +1314,10 @@ void ready_area_detection_thread(void *arg)
                     longCarTryCnt = 0;
                 }
                 carInfo.parkState = PARK_TOO_LONG;
-            }
-            else  */
-            if(is_signal_filter_trigger(SIGNAL_ENTRANCE) 
-            && !is_signal_filter_trigger(SIGNAL_ALL_IN)){      //停车光电和入口光电都触发，说明停车太靠前
-                isCarTooLongTriggerEntrance = true;
-                if(PARK_TOO_FRONT != carInfo.parkState){
-                    carInfo.voiceCnt = 0;
-                    xp_ag_osal_get()->screen.display(AG_CAR_BACKOFF);
-                }
-                if(0 == carInfo.voiceCnt 
-                || (get_diff_ms(carInfo.parkStaStartT) > 10000 && carInfo.voiceCnt < 2)){     //限制语音播报时间和次数
-                    carInfo.voiceCnt++;
-                    voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_SLOW_BACKOFF);
-                    carInfo.parkStaStartT = aos_now_ms();
-                }
-                carInfo.parkState = PARK_TOO_FRONT;
-            }
-            else{                                                                   //仅停车光电触发，说明停好车
+            } */
+            //三个光电全挡住或者只挡住停车，认为停好车
+            if((is_signal_filter_trigger(SIGNAL_ALL_IN) && is_signal_filter_trigger(SIGNAL_ENTRANCE))
+            || (!is_signal_filter_trigger(SIGNAL_ALL_IN) && !is_signal_filter_trigger(SIGNAL_ENTRANCE))){
                 if(PARK_OK != carInfo.parkState){
                     carInfo.voiceCnt = 0;
                     // xp_ag_osal_get()->screen.display((get_is_allow_next_car_wash_flag() && wash.orderQueue[0].numberId != 0) ? AG_CAR_READY_TRANSFER : AG_CAR_STOP);
@@ -1350,6 +1336,40 @@ void ready_area_detection_thread(void *arg)
                     }
                 // }
                 carInfo.parkState = PARK_OK;
+            }
+            else if(is_signal_filter_trigger(SIGNAL_ENTRANCE)){     //停车光电和入口光电都触发，说明停车太靠前
+                isCarTooLongTriggerEntrance = true;
+                if(PARK_TOO_FRONT != carInfo.parkState){
+                    carInfo.voiceCnt = 0;
+                    xp_ag_osal_get()->screen.display(AG_CAR_BACKOFF);
+                }
+                if(0 == carInfo.voiceCnt 
+                || (get_diff_ms(carInfo.parkStaStartT) > 10000 && carInfo.voiceCnt < 2)){     //限制语音播报时间和次数
+                    carInfo.voiceCnt++;
+                    voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_SLOW_BACKOFF);
+                    carInfo.parkStaStartT = aos_now_ms();
+                }
+                carInfo.parkState = PARK_TOO_FRONT;
+            }
+            else if(is_signal_filter_trigger(SIGNAL_ALL_IN)){
+                if(PARK_TOO_BACK != carInfo.parkState){
+                    carInfo.voiceCnt = 0;
+                    xp_ag_osal_get()->screen.display(AG_CAR_FORWARD);
+                }
+                if(isPlayForwardVoice){
+                    if(0 == carInfo.voiceCnt || get_diff_ms(carInfo.parkStaStartT) > 10000){
+                        carInfo.voiceCnt++;
+                        voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_FORWARD);
+                        carInfo.parkStaStartT = aos_now_ms();
+                    }
+                    if(carInfo.voiceCnt > 1){
+                        isPlayForwardVoice = false;
+                    }
+                }
+                carInfo.parkState = PARK_TOO_BACK;
+            }
+            else{
+                //无其它情况
             }
         }
         else{
