@@ -1943,8 +1943,8 @@ static bool is_dev_limit_touched(Type_MotorInfo_Def* const pMotor)
         else{
             //道闸有多个不允许执行关闭的限位信号，在这里特殊处理
             if(GATE_1_MACH_ID == pMotor->drvIndex){
-                if(is_signal_filter_trigger(SIGNAL_ALL_IN)
-                || is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT)){
+                if(is_signal_filter_trigger(SIGNAL_ALL_IN)){
+                // || is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT)){
                 // || is_signal_filter_trigger(SIGNAL_GROUND)){
                     return true;
                 }else{}//继续判断限位

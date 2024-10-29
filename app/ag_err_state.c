@@ -785,7 +785,7 @@ static void xp_check_error_thread(void *arg)
         }
         
         //有错误更新时重新上传报警代码
-        if(isUploadErrTrig && errNeedFlag.isMqttConnected){
+        if(isUploadErrTrig && errNeedFlag.isMqttConnected && !errNeedFlag.isDevStopSta){
             aos_queue_send(&error.status, ErrInfo_Table, sizeof(ErrInfo_Table));       //采用消息队列的方式存储报警信息依次上传
             for (uint8_t i = 0; i < ERR_TABLE_NUMBERS; i++)
             {

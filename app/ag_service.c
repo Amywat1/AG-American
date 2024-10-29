@@ -522,8 +522,14 @@ void order_counter_thread(void *arg)
                 }
             }
         }
-        else{
-            LOG_UPLOAD("Month %d, date %d illegal", time->month, time->date);
+        else{                                               //时间错误时，跟时间不相关的信息还是需要记录
+            if(kvService.order.isNewOrder){
+                kvService.order.isNewOrder = false;
+                kvService.order.isNewOrderSave = true;
+                kvService.order.today.totals++;
+                kvService.order.total.totals++;
+            }
+            // LOG_INFO("Month %d, date %d illegal", time->month, time->date);
         }
 
         //KV值存储避开音频播放（两个一起运行偶尔会触发hardFault，原因未知，可能跟中断有关）
@@ -654,7 +660,9 @@ static void model_status_update_thread(void *arg)
         strcpy(appModule.localSts.minitor.deviceModel, "AG-America");
         appModule.localSts.minitor.startCnt     = kvService.order.total.totals;
         appModule.localSts.minitor.completeCnt  = kvService.order.completeCnt;
-        appModule.localSts.minitor.failedCnt    = kvService.order.total.totals - kvService.order.completeCnt;
+        if(STA_STOP == wash.state || STA_EXCEPTION == wash.state || STA_INIT == wash.state){    //异常或初始化时才更新错误次数
+            appModule.localSts.minitor.failedCnt = kvService.order.total.totals - kvService.order.completeCnt;
+        }
         appModule.localSts.minitor.toadyTotalCnt= kvService.order.today.totals;
 /* ************************************************************** 传感器检测 *************************************************************** */
         appModule.localSts.sensor.emergency             = !osal_is_io_trigger(BOARD0_INPUT_POWER_ON);
@@ -700,7 +708,7 @@ static void model_status_update_thread(void *arg)
         appModule.localSts.sensor.fRightPutterPulse     = osal_is_io_trigger(BOARD2_INPUT_FRONT_RIGHT_MOVE_PULSE);
         appModule.localSts.sensor.bLeftPutterPulse      = osal_is_io_trigger(BOARD2_INPUT_BACK_LEFT_MOVE_PULSE);
         appModule.localSts.sensor.bRightPutterPulse     = osal_is_io_trigger(BOARD2_INPUT_BACK_RIGHT_MOVE_PULSE);
-        appModule.localSts.sensor.ground                = is_signal_filter_trigger(SIGNAL_GROUND);
+        appModule.localSts.sensor.ground                = is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT);
         // appModule.localSts.sensor.gate1Err              = osal_is_io_trigger(BOARD4_INPUT_GATE_1_OVERLOAD);
         // appModule.localSts.sensor.sewageHigh            = osal_is_io_trigger(BOARD1_INPUT_SEWAGE_HIGH);
         appModule.localSts.sensor.shampooLess           = osal_is_io_trigger(BOARD1_INPUT_SHAMPOO_LESS_BULE);
@@ -1228,7 +1236,8 @@ void ready_area_detection_thread(void *arg)
             carInfo.isCarInReadyArea = true;
             if(isCarWantForwardExit) isCarMoveInMachine = true;
             carOutReadyAreaTimeStamp = aos_now_ms();
-            if(!is_signal_filter_trigger(SIGNAL_ALL_IN) && !is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT)){
+            // if(!is_signal_filter_trigger(SIGNAL_ALL_IN) && !is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT)){
+            if(!is_signal_filter_trigger(SIGNAL_ALL_IN)){
                 if(is_dev_move_sta_idle(GATE_1_MACH_ID) && !is_signal_filter_trigger(SIGNAL_GATE_1_CLOSE)){
                     gate_change_state(CRL_SECTION_1, GATE_CLOSE);
                 }
@@ -1505,6 +1514,7 @@ static int xp_service_set_state(Type_ServiceState_Enum state)
         }
         err_need_flag_handle()->isDevIdleSta                = (STA_IDLE == wash.state) ? true : false;
         err_need_flag_handle()->isDevRunSta                 = (STA_RUN == wash.state) ? true : false;
+        err_need_flag_handle()->isDevStopSta                = (STA_STOP == wash.state || STA_EXCEPTION == wash.state) ? true : false;
         //待机空闲或完成状态下不检测防撞
         err_need_flag_handle()->isAllCollisionEnable        = (STA_IDLE == wash.state || STA_COMPELTE == wash.state) ? false : appModule.localCmd.func.detectAllCollision;
         //非运行状态下不检测超高
@@ -1569,7 +1579,6 @@ static int xp_service_start_wash_ready(Type_ServiceState_Enum state)
     LOG_INFO("Device start wash, ID <%d>", wash.orderQueue[0].numberId);
     osal_dev_io_state_change(BOARD5_OUTPUT_MACHINE_IDEL, IO_ENABLE);
     clearOfflineOrdeBusyCnt = 0;
-    err_need_flag_handle()->isDetectBrushCroooked = true;
     gate_change_state(CRL_SECTION_2, GATE_OPEN);
     set_new_car_ready_wash_falg(true);
     set_is_allow_next_car_wash_flag(false);
@@ -1609,7 +1618,7 @@ static void offline_payment_callback(uint8_t washMode)
     {
     case 1: wash.washMode = FINE_WASH;  break;
     case 2: wash.washMode = NORMAL_WASH;break;
-    case 3: wash.washMode = NORMAL_WASH;break;
+    case 3: wash.washMode = QUICK_WASH; break;
     default:
         LOG_UPLOAD("Not support this mode");
         return;
@@ -2076,7 +2085,7 @@ static void xp_err_deal_callback(uint16_t code, Type_ErrDealMode_Enum mode)
     if(E_ERROR == mode || E_WARNING == mode){
         if(wash.state != STA_SUSPEND){          //异常挂起状态有新报警过来不做处理
             if(wash.state != STA_STOP){
-                xp_service_set_state(STA_RUN == wash.state ? STA_SUSPEND : STA_EXCEPTION);
+                xp_service_set_state((STA_RUN == wash.state || STA_IDLE == wash.state) ? STA_SUSPEND : STA_EXCEPTION);
             }
             else{
                 xp_service_set_state(STA_STOP);

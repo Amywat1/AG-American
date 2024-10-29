@@ -59,7 +59,7 @@
 
 //洗车模式
 #define NORMAL_WASH (1)	    //普通洗
-#define QUICK_WASH	(2)		//
+#define QUICK_WASH	(2)		//中间挡（比普通洗多一个底盘冲洗）
 #define FINE_WASH	(3)	    //高档洗
 
 //控制方向指令枚举
@@ -1212,7 +1212,9 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
     static bool isStartCali = false;
     static int16_t currentSum[BRUSH_NUM] = {0};
     static int16_t recordCurrent[BRUSH_NUM][BRUSH_CALI_READ_CNT] = {0};
+    static bool carIntrudeRecordSta = false;
     int32_t lifterPos = 0;
+    static uint64_t frontBrushMovetimeStamp;
 
     if(!stepSta.isModuleDriverExecuted){
         stepSta.isModuleDriverExecuted = true;
@@ -1240,6 +1242,8 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
             front_side_brush_move_time(CRL_BOTH, CMD_FORWARD, isCarIntrude ? 800 : 5500);
             currentSum[BRUSH_FRONT_LEFT] = 0;
             currentSum[BRUSH_FRONT_RIGHT] = 0;
+            carIntrudeRecordSta = isCarIntrude;
+            frontBrushMovetimeStamp = aos_now_ms();
             break;
         case BRUSH_SIDE_BACK:
             if(!is_signal_filter_trigger(SIGNAL_BL_MOVE_ZERO) || !is_signal_filter_trigger(SIGNAL_BR_MOVE_ZERO)){
@@ -1264,6 +1268,20 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
 
     if(moduleSta.isComplete) return RET_COMPLETE;               //避免完成后重复调用，一直保持完成状态
 
+    //前侧刷校准过程中如果判定闯入，前侧刷回到安全位置，不洗车头
+    if(BRUSH_SIDE_FRONT == brushType && false == carIntrudeRecordSta && isCarIntrude){
+        if(get_diff_ms(frontBrushMovetimeStamp) > 800){
+            if(get_diff_ms(frontBrushMovetimeStamp) > 1800){        //回退量不大就不退了
+                front_side_brush_move_time(CRL_BOTH, CMD_BACKWARD, get_diff_ms(frontBrushMovetimeStamp) - 800 + 500);    //回退时增加一定补偿值
+            }
+            else{
+                front_side_brush_move(CRL_BOTH, CMD_STILL, true);
+            }
+            carIntrudeRecordSta = true;
+        }
+    }
+
+    
     if(get_diff_ms(moduleSta.timeStamp) > 20000 + moduleSta.pauseTime){
         LOG_WARN("module_brush_current_calibrate over time");
         return ERR_TIMEOUT;
@@ -1512,7 +1530,6 @@ static int module_side_brush_both_move_to_position(Type_SideBrushPos_Enum pos)
         //毛刷移动过程中，如果有一个毛刷压力过大，则回零，避免在洗车头或车尾的时候，毛刷吃毛过深，导致挤停
         if(brush[BRUSH_FRONT_LEFT].current > (brush[BRUSH_FRONT_LEFT].pressWarning) || brush[BRUSH_FRONT_RIGHT].current > brush[BRUSH_FRONT_RIGHT].pressWarning
         || is_signal_filter_trigger(SIGNAL_FL_BRUSH_CROOKED) || is_signal_filter_trigger(SIGNAL_FR_BRUSH_CROOKED)){
-            // err_need_flag_handle()->isDetectBrushCroooked = false;  //侧刷触压值过大或触发前后歪时不检测，等待开位后检测（全程检测，避免用户直接往前开）
             isSideBrushCantMoveToPose = true;
             LOG_UPLOAD("Side brush current too high, can not move to target position, jump to move zero");
             stepSta.isModuleDriverExecuted = false;
@@ -1618,7 +1635,6 @@ static int module_side_brush_both_move_to_position(Type_SideBrushPos_Enum pos)
     else{
         int ret = module_side_putters_open();
         if(ret != NOR_CONTINUE){
-            err_need_flag_handle()->isDetectBrushCroooked = true;
             if(RET_COMPLETE == ret
             && (is_signal_filter_trigger(SIGNAL_FL_BRUSH_CROOKED) || is_signal_filter_trigger(SIGNAL_FR_BRUSH_CROOKED))){
                 ret = NOR_CONTINUE;     //开到位后，如果检测到前后歪还是触发状态，则在这里等待报警
@@ -2064,6 +2080,7 @@ int step_dev_wash(uint8_t *completeId)
                             water_system_control(WATER_PREMIUM_SHAMPOO, true);
                         }
                         else{
+                            if(NORMAL_WASH == carWash[i].washMode)   water_system_control(WATER_BASE_PLATE, true);
                             water_system_control(WATER_NORMAL_SHAMPOO, true);
                         }
                         // water_system_control(WATER_WAX, true);
@@ -2132,6 +2149,7 @@ int step_dev_wash(uint8_t *completeId)
                             carWash[i].headProc = PROC_START_FRONT_BRUSH;
                             LOG_UPLOAD("Car intrude, change proc to start front brush immediately");
                         }
+                        err_need_flag_handle()->isDetectBrushCroooked = true;   //前侧刷校准时开始合才开始检测侧刷歪报警
                         // if(xp_osal_get_dev_pos(FRONT_LEFT_MOVE_MATCH_ID) > PUTTER_GO_MIDDLE_OFFSET - MOVE_POS_ERR
                         // && xp_osal_get_dev_pos(FRONT_RIGHT_MOVE_MATCH_ID) > PUTTER_GO_MIDDLE_OFFSET - MOVE_POS_ERR){
                         //     brush[BRUSH_FRONT_LEFT].isCalibrated = true;
@@ -2182,6 +2200,7 @@ int step_dev_wash(uint8_t *completeId)
                 brush[BRUSH_BACK_RIGHT].runMode   = BRUSH_FREE_FOLLOW;
                 brush[BRUSH_BACK_LEFT].isJogMove  = true;
                 brush[BRUSH_BACK_RIGHT].isJogMove = true;
+                err_need_flag_handle()->isDetectBrushCroooked = false;      //后侧刷越过车头后不再进行前后歪检测（可以早点不检测，但是为了避免防闯入误触发，导致车辆位置滞后，提高安全性）
             }
 
             //判断是否进入了新流程
@@ -2235,6 +2254,7 @@ int step_dev_wash(uint8_t *completeId)
                             water_system_control(WATER_PREMIUM_SHAMPOO, true);
                         }
                         else{
+                            if(NORMAL_WASH == carWash[i].washMode)   water_system_control(WATER_BASE_PLATE, true);
                             water_system_control(WATER_NORMAL_SHAMPOO, true);
                         }
                     }
@@ -2264,6 +2284,7 @@ int step_dev_wash(uint8_t *completeId)
                             water_system_control(WATER_PREMIUM_SHAMPOO, false);
                         }
                         else{
+                            if(NORMAL_WASH == carWash[i].washMode)   water_system_control(WATER_BASE_PLATE, false);
                             water_system_control(WATER_NORMAL_SHAMPOO, false);
                         }
                         water_system_control(WATER_SWING_WATER, false);
@@ -2310,6 +2331,7 @@ int step_dev_wash(uint8_t *completeId)
                                     water_system_control(WATER_PREMIUM_SHAMPOO, true);
                                 }
                                 else{
+                                    if(NORMAL_WASH == carWash[i].washMode)   water_system_control(WATER_BASE_PLATE, true);
                                     water_system_control(WATER_NORMAL_SHAMPOO, true);
                                 }
                                 water_system_control(WATER_SWING_WATER, true);
@@ -2466,6 +2488,7 @@ int step_dev_wash(uint8_t *completeId)
                             water_system_control(WATER_PREMIUM_SHAMPOO, false);
                         }
                         else{
+                            if(NORMAL_WASH == carWash[i].washMode)   water_system_control(WATER_BASE_PLATE, false);
                             water_system_control(WATER_NORMAL_SHAMPOO, false);
                         }
                     }

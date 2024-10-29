@@ -38,6 +38,7 @@ typedef struct {
 typedef struct {
     bool isDevIdleSta;                  //设备是否处于待机状态
     bool isDevRunSta;                   //设备是否处于洗车状态
+    bool isDevStopSta;                  //设备是否处于停机状态
     bool isMqttConnected;               //是否联网
     bool isAllCollisionEnable;          //防撞检测总使能
     bool isFrontLeftCollisionEnable;    //左前竖防撞检测使能
