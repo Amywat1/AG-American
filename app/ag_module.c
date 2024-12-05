@@ -25,7 +25,7 @@
 #define CAR_POS_RECORD_INFO_MAX_NUM             ((CAR_MAX_LENGTH + SIGNAL_ENTRANCE_TO_TOP_BRUSH_OFFSET)/CAR_POS_RECORD_INFO_ACCURACY)    //车身位置信息的记录缓存个数
 #define TOP_BRUSH_RECORD_CUR_AREA               (5)             //顶刷记录电流的升降脉冲区域（兼容顶刷在一定高度会打到框架的结构）
 #define BRUSH_CALI_READ_CNT                     (5)             //毛刷电流校准采样次数
-#define DECISION_BACKWARD_CMD_CNT               (700/BRUSH_FOLLOW_THREAD_FREQ)  //决定执行后退指令的滤波次数
+#define DECISION_BACKWARD_CMD_CNT               (500/BRUSH_FOLLOW_THREAD_FREQ)  //决定执行后退指令的滤波次数
 #define DECISION_FORWARD_CMD_CNT                (800/BRUSH_FOLLOW_THREAD_FREQ)  //决定执行前进指令的滤波次数
 #define DECISION_STILL_CMD_CNT                  (1)             //决定执行保持指令的滤波次数
 #define SIDE_BRUSH_OPEN_POS                     (0)             //侧刷的开位位置，侧刷跟随过程中开位限制在零位移出的一定距离，避免毛刷打到壳体影响电流值
@@ -247,6 +247,8 @@ static Type_DriverCmdInfo_Def   priSwCmd[PRI_SWITCH_NUM]    = {0};  //私有开�
 static bool isDriverExecuted = false;                   //驱动执行标志
 static bool isSideBrushCantMoveToPose = false;          //侧刷无法到达指定位置标志
 static bool isClearConveyorEncFinish = false;           //输送带脉冲值清零结束标志
+static bool isTopBrushProtect = false;
+static bool isForbidGantryRecover = false;
 
 //私有开关信息
 /* osalMatchId ： 驱动机构的索引号 */
@@ -1383,7 +1385,7 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
                     brush[BRUSH_TOP].pressL_NoBW    = brush[BRUSH_TOP].baseCurrent  + 15;      //跟随不允许向上，阈值较下限值高，能及时向下贴合车身
                     brush[BRUSH_TOP].pressH_NoFW    = brush[BRUSH_TOP].baseCurrent  + 20;      //跟随不允许向下，阈值较上限值低，不要刷太深
                     brush[BRUSH_TOP].pressH         = brush[BRUSH_TOP].baseCurrent  + 22;      //自由跟随状态下，阈值上限值偏高，加大阈值范围，防止点头
-                    brush[BRUSH_TOP].pressProtect   = brush[BRUSH_TOP].baseCurrent  + 50;
+                    brush[BRUSH_TOP].pressProtect   = brush[BRUSH_TOP].baseCurrent  + 40;
                 }
                 else if(BRUSH_SIDE_FRONT == brushType){
                     brush[BRUSH_FRONT_LEFT].baseCurrent = currentSum[BRUSH_FRONT_LEFT] / BRUSH_CALI_READ_CNT;
@@ -1528,7 +1530,7 @@ static int module_side_brush_both_move_to_position(Type_SideBrushPos_Enum pos)
 
     if(!isSideBrushCantMoveToPose){
         //毛刷移动过程中，如果有一个毛刷压力过大，则回零，避免在洗车头或车尾的时候，毛刷吃毛过深，导致挤停
-        if(brush[BRUSH_FRONT_LEFT].current > (brush[BRUSH_FRONT_LEFT].pressWarning) || brush[BRUSH_FRONT_RIGHT].current > brush[BRUSH_FRONT_RIGHT].pressWarning
+        if(brush[BRUSH_FRONT_LEFT].current > (brush[BRUSH_FRONT_LEFT].pressWarning - 20) || brush[BRUSH_FRONT_RIGHT].current > (brush[BRUSH_FRONT_RIGHT].pressWarning - 20)
         || is_signal_filter_trigger(SIGNAL_FL_BRUSH_CROOKED) || is_signal_filter_trigger(SIGNAL_FR_BRUSH_CROOKED)){
             isSideBrushCantMoveToPose = true;
             LOG_UPLOAD("Side brush current too high, can not move to target position, jump to move zero");
@@ -1816,6 +1818,7 @@ int step_dev_wash(uint8_t *completeId)
     static int32_t recordLifterPosValue = 0;
     static uint8_t waitOverCnt = 0;
     static uint8_t procCheckCnt[SUPPORT_WASH_NUM_MAX] = {0};
+    static uint32_t topBrushProtectStartPos = 0;
 
     printCnt++;
     *completeId = 0;        //初始赋值为0，若有完成的订单，赋值完成的车辆Id
@@ -1987,6 +1990,21 @@ int step_dev_wash(uint8_t *completeId)
             brush[BRUSH_TOP].runMode = BRUSH_FOLLOW_NO_BACKWARD;
             LOG_UPLOAD("Top brush change follow mode no backward");
         }
+    }
+
+    //顶刷在车头区域电流过大时停止输送带判定
+    if(carWash[entryCarIndex].headProc > PROC_START_SHAMPOO && carWash[entryCarIndex].headProc < PROC_START_FRONT_BRUSH){
+        if(topBrushProtectStartPos != 0){
+            isTopBrushProtect = (lifterPos > 110 && workAreaConveyorEnc - topBrushProtectStartPos < 100) ? true : false;    //顶刷在一定高度以下且在车头区域时进行保护
+        }
+        //有新车进来洗，检测顶刷是否有碰到车，碰到了开始记录位置
+        else if(brush[BRUSH_TOP].current > brush[BRUSH_TOP].pressTouchcar){
+            topBrushProtectStartPos = workAreaConveyorEnc;
+        }
+    }
+    else{
+        topBrushProtectStartPos = 0;
+        isTopBrushProtect = false;
     }
 
     //皮卡检测（到最高点向下移动时开始检测下降斜率）
@@ -2279,6 +2297,7 @@ int step_dev_wash(uint8_t *completeId)
                         sideBrushWashPos = SIDE_BRUSH_POS_LEFT;     //开始前侧刷时，侧刷已经在中间，不需要再移动到中间
                         isSideBrushCantMoveToPose = false;          //默认侧刷能到达指定位置，避免前面一辆车洗车尾时把该标志位置true了
                         carWash[i].isWashCarHeadFinish = false;
+                        isForbidGantryRecover = true;
                         if(FINE_WASH == carWash[i].washMode){
                             water_system_control(WATER_BASE_PLATE, false);
                             water_system_control(WATER_PREMIUM_SHAMPOO, false);
@@ -2344,6 +2363,7 @@ int step_dev_wash(uint8_t *completeId)
                     //前侧刷洗完车头后开始清洗车身
                     if(!carWash[i].isFrontBrushWashBody
                     && is_dev_move_sta_idle(FRONT_LEFT_MOVE_MATCH_ID) && is_dev_move_sta_idle(FRONT_RIGHT_MOVE_MATCH_ID)){
+                        isForbidGantryRecover = false;
                         carWash[i].isFrontBrushWashBody = true;
                         carWash[i].isFrontBrushInHeadArea = true;
                         conveyor_move(CRL_SECTION_2, CMD_FORWARD);
@@ -2761,6 +2781,7 @@ void side_brush_follow_thread(void *arg)
                 osal_set_dev_limit_mode(FRONT_RIGHT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, PUTTER_GO_ANOTHER_SIDE_OFFSET);
                 isFrontBrushFollow = false;
             }
+            isForbidGantryRecover = false;
             aos_msleep(300);
             continue;
         }
@@ -2952,27 +2973,32 @@ void side_brush_follow_thread(void *arg)
                     LOG_INFO("Top current is fit, lifter still");
                 }
                 
-                //输送带移动速度受限于毛刷电流（升降没到顶时限速，到顶的话靠触压异常值保护）
-                if(brush[BRUSH_TOP].current > brush[BRUSH_TOP].pressProtect && !is_signal_filter_trigger(SIGNAL_LIFTER_UP)){
-                    if(pressProtectCnt[BRUSH_TOP] > PRESS_PROTECT_COMFIRM_CNT){
-                        limtConveyorLevel[BRUSH_TOP] = VELOCITY_LIMIT_LEVEL_STOP;
-                        protectReleaseCnt[BRUSH_TOP] = PRESS_PROTECT_REEASE_CNT;
+                if(isTopBrushProtect){
+                    //输送带移动速度受限于毛刷电流（升降没到顶时限速，到顶的话靠触压异常值保护）
+                    if(brush[BRUSH_TOP].current > brush[BRUSH_TOP].pressProtect && !is_signal_filter_trigger(SIGNAL_LIFTER_UP)){
+                        if(pressProtectCnt[BRUSH_TOP] > PRESS_PROTECT_COMFIRM_CNT){
+                            limtConveyorLevel[BRUSH_TOP] = VELOCITY_LIMIT_LEVEL_STOP;
+                            protectReleaseCnt[BRUSH_TOP] = PRESS_PROTECT_REEASE_CNT;
+                        }
+                        else{                                   //未达到确认次数，不进行限速
+                            pressProtectCnt[BRUSH_TOP]++;
+                            protectReleaseCnt[BRUSH_TOP] = 0;
+                            limtConveyorLevel[BRUSH_TOP] = VELOCITY_NO_LIMIT;
+                        }
                     }
-                    else{                                   //未达到确认次数，不进行限速
-                        pressProtectCnt[BRUSH_TOP]++;
-                        protectReleaseCnt[BRUSH_TOP] = 0;
-                        limtConveyorLevel[BRUSH_TOP] = VELOCITY_NO_LIMIT;
+                    else{
+                        if(protectReleaseCnt[BRUSH_TOP] > 0){   //未确认释放时，还是限速
+                            if(brush[BRUSH_TOP].current < brush[BRUSH_TOP].pressH) protectReleaseCnt[BRUSH_TOP]--;
+                            limtConveyorLevel[BRUSH_TOP] = VELOCITY_LIMIT_LEVEL_STOP;
+                        }
+                        else{
+                            pressProtectCnt[BRUSH_TOP] = 0;
+                            limtConveyorLevel[BRUSH_TOP] = VELOCITY_NO_LIMIT;
+                        }
                     }
                 }
                 else{
-                    if(protectReleaseCnt[BRUSH_TOP] > 0){   //未确认释放时，还是限速
-                        protectReleaseCnt[BRUSH_TOP]--;
-                        limtConveyorLevel[BRUSH_TOP] = VELOCITY_LIMIT_LEVEL_STOP;
-                    }
-                    else{
-                        pressProtectCnt[BRUSH_TOP] = 0;
-                        limtConveyorLevel[BRUSH_TOP] = VELOCITY_NO_LIMIT;
-                    }
+                    limtConveyorLevel[BRUSH_TOP] = VELOCITY_NO_LIMIT;
                 }
             }
             else{
@@ -3009,7 +3035,7 @@ void side_brush_follow_thread(void *arg)
                             }
                             LOG_INFO("%s current %d is high to protect, backward. crooked flag %d", xp_get_brush_str(i), brush[i].current, isBrushCrooked);
                         }
-                        else if(get_diff_ms(brushMoveTimestamp[i]) > 1000){     //限制执行的间隔时间
+                        else if(get_diff_ms(brushMoveTimestamp[i]) > 800){     //限制执行的间隔时间
                             brushMoveTimestamp[i] = aos_now_ms();
                             filterCnt[i] = 0;
                             switch (i)
@@ -3074,7 +3100,8 @@ void side_brush_follow_thread(void *arg)
                     }
                     
                     //输送带移动速度受限于毛刷电流
-                    uint8_t putterMatchId = 0;
+                    limtConveyorLevel[i] = VELOCITY_NO_LIMIT;
+                    /* uint8_t putterMatchId = 0;
                     switch (i)
                     {
                     case BRUSH_FRONT_LEFT:  putterMatchId = FRONT_LEFT_MOVE_MATCH_ID; break;
@@ -3105,7 +3132,7 @@ void side_brush_follow_thread(void *arg)
                             pressProtectCnt[i] = 0;
                             limtConveyorLevel[i] = VELOCITY_NO_LIMIT;
                         }
-                    }
+                    } */
                 }
                 else{
                     limtConveyorLevel[i] = VELOCITY_NO_LIMIT;
@@ -3113,8 +3140,8 @@ void side_brush_follow_thread(void *arg)
             }
 
             /* 输送带2#不受触压值保护限速 */
-            /* //查找每个毛刷限制的速度，取最小值
-            limtConveyorLevelFinal = VELOCITY_NO_LIMIT;
+            //查找每个毛刷限制的速度，取最小值
+            /* limtConveyorLevelFinal = VELOCITY_NO_LIMIT;
             for (uint8_t i = 0; i < BRUSH_NUM; i++)
             {
                 if(limtConveyorLevel[i] < limtConveyorLevelFinal){
@@ -3132,11 +3159,11 @@ void side_brush_follow_thread(void *arg)
                     brush[BRUSH_BACK_LEFT].current, brush[BRUSH_BACK_RIGHT].current, conveyorRecordSpeed);
                     conveyor_move(CRL_SECTION_2, CMD_STILL);
                 }
-                else if(abs(conveyorRecordSpeed) < limtConveyorLevelFinal){
+                else if(abs(conveyorRecordSpeed) < limtConveyorLevelFinal && !isForbidGantryRecover){
                     LOG_UPLOAD("recover conveyor speed %d", conveyorRecordSpeed);
                     conveyor_move(CRL_SECTION_2, conveyorRecordSpeed);
                 }
-                else{
+                else if(!isForbidGantryRecover){
                     LOG_UPLOAD("gantry speed limit to %d", limtConveyorLevelFinal);
                     conveyorRecordSpeed > 0 ? conveyor_move(CRL_SECTION_2, limtConveyorLevelFinal) : conveyor_move(CRL_SECTION_2, -limtConveyorLevelFinal);
                 }

@@ -108,10 +108,10 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     {8116,   false,      false,      0,      500,                500,                E_ERROR},   //1#道闸开关同时亮
     {8117,   false,      false,      0,      500,                500,                E_ERROR},   //2#道闸开关同时亮
     {8118,   false,      false,      0,      500,                500,                E_ERROR},   //顶刷上下同时亮
-    {8119,   false,      false,      0,      2000,               500,                E_ERROR},   //左前刷旋转电流异常
-    {8120,   false,      false,      0,      2000,               500,                E_ERROR},   //右前刷旋转电流异常
-    {8121,   false,      false,      0,      2000,               500,                E_ERROR},   //左后刷旋转电流异常
-    {8122,   false,      false,      0,      2000,               500,                E_ERROR},   //右后刷旋转电流异常
+    {8119,   false,      false,      0,      2500,               500,                E_ERROR},   //左前刷旋转电流异常
+    {8120,   false,      false,      0,      2500,               500,                E_ERROR},   //右前刷旋转电流异常
+    {8121,   false,      false,      0,      2500,               500,                E_ERROR},   //左后刷旋转电流异常
+    {8122,   false,      false,      0,      2500,               500,                E_ERROR},   //右后刷旋转电流异常
     // {8123,   false,      false,      0,      500,                500,                E_WARNING}, //后裙边电机过载（报警但延迟停机）
     // {8124,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //左后裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
     // {8125,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //右后裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
