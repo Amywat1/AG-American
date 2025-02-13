@@ -101,6 +101,8 @@ typedef struct{
     int                 completeCnt;
     int                 failedCnt;
     int                 toadyTotalCnt;
+    int                 canRebootCnt;
+    int                 canMbCsValue;
     // int                 errCode;
 } Type_ModelSts_monitor_Def;
 

@@ -655,6 +655,10 @@ static void model_status_update_thread(void *arg)
         appModule.localSts.minitor.frontRightBrushCurrent   = get_brush_current(BRUSH_FRONT_RIGHT);
         appModule.localSts.minitor.backLeftBrushCurrent     = get_brush_current(BRUSH_BACK_LEFT);
         appModule.localSts.minitor.backRightBrushCurrent    = get_brush_current(BRUSH_BACK_RIGHT);
+        extern uint16_t get_can_reboot_cnt(void);
+        appModule.localSts.minitor.canRebootCnt         = get_can_reboot_cnt();
+        extern uint32_t get_can_mb_cs_value(void);
+        appModule.localSts.minitor.canMbCsValue         = get_can_mb_cs_value() >> 24;  //低24位是id和数据位，不关注
 /* ************************************************************** 检测数据 *************************************************************** */
         strcpy(appModule.localSts.minitor.version, appModule.appVersion);
         strcpy(appModule.localSts.minitor.deviceModel, "AG-America");
@@ -2269,6 +2273,12 @@ int xp_service_debug(char* type, char* fun, char* param)
     }
     else if (strcasecmp(type, "time") == 0){
         LOG_UPLOAD("RTC time: %s. systime: %s.", xp_time_get_string(), xp_msTostring(aos_now_ms()));
+    }
+    else if (strcasecmp(type, "test") == 0){
+        extern uint16_t get_can_reboot_cnt(void);
+        LOG_DEBUG(">>>>> reboot cnt %d", get_can_reboot_cnt());
+        extern uint32_t get_can_mb_cs_value(void);
+        LOG_DEBUG(">>>>> CS value 0x%08x", get_can_mb_cs_value());
     }
     else {
         return 0;
