@@ -1795,6 +1795,10 @@ void xp_service_thread(void* arg)
                 osal_dev_io_state_change(BOARD5_OUTPUT_SIGNAL_LAMP_YELLOW,  IO_DISABLE);
                 set_is_allow_next_car_wash_flag(true);
                 // set_error_state(8126, false);
+                set_error_state(9001, false);
+                set_error_state(9002, false);
+                set_error_state(9003, false);
+                set_error_state(9004, false);
                 clearOfflineOrdeBusyCnt = 0;
                 osal_dev_io_state_change(BOARD5_OUTPUT_MACHINE_IDEL, IO_ENABLE);
                 devIdelStaTimeStamp = aos_now_ms();
@@ -1860,6 +1864,8 @@ void xp_service_thread(void* arg)
             uint8_t completeCarId = 0;
             ret = step_dev_wash(&completeCarId);
             if (RET_COMPLETE == ret) {
+                set_error_state(9003, false);   //洗车完成后清除1#_2#输送带处打滑标志
+                set_error_state(9004, false);
                 timeStamp = aos_now_ms();
                 carInfo.isCarFinishWash = true;
                 if(1 == completeCarId){

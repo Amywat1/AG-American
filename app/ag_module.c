@@ -175,6 +175,14 @@ typedef enum {
 	PROC_FINISH_DYRING,                 //结束吹风
 } Type_ProcType_Enum;
 
+typedef enum {
+	WHEEL_SKID_NULL = 0,
+    HEAD_WHEEL_SKID_IN_1_2_CONVEYOR,
+    TAIL_WHEEL_SKID_IN_1_2_CONVEYOR,
+    HEAD_WHEEL_SKID_IN_2_3_CONVEYOR,
+	TAIL_WHEEL_SKID_IN_2_3_CONVEYOR,
+} Type_WheelSkidAreaType_Enum;
+
 Type_CarProcPosInfo_Def   washProcPos = {0};
 
 typedef struct{
@@ -207,6 +215,11 @@ typedef struct{
     bool                isFrontChangeBrushRotation;
     bool                isCarMoveCompleteArea;
     bool                isBackBrushFinish;
+    bool                isFrontWheelSkid;
+    bool                isBackWheelSkid;
+
+    Type_WheelSkidAreaType_Enum wheelSkidArea;      //车辆打滑位置
+    uint64_t            wheelSkidTimeStamp;
 } Type_CarWashInfo_Def;
 static Type_CarWashInfo_Def carWash[SUPPORT_WASH_NUM_MAX] = {0};
 static bool     isAllowNextCarInWorkArea = false;   //是否允许下一辆车进入清洗
@@ -328,6 +341,7 @@ void dev_zero_check_thread(void *arg);
 void conveyor_run_crl_thread(void *arg);
 void side_brush_follow_thread(void *arg);
 void voice_play_thread(void *arg);
+void vehicle_skid_detect_thread(void *arg);
 
 /*                                                         =======================                                                         */
 /* ========================================================     打印字符查询表     ======================================================== */
@@ -352,6 +366,7 @@ int xp_service_module_init(void)
     aos_task_new("conveyor_run_crl",	conveyor_run_crl_thread,     NULL, 1024);
     aos_task_new("side_brush_follow",	side_brush_follow_thread,    NULL, 2048);
     aos_task_new("voice_play",	        voice_play_thread,           NULL, 8192);
+    aos_task_new("vehicle_skid_detect",	vehicle_skid_detect_thread,  NULL, 2048);
 
     //这里需要初始化报警触压值，不然直接转刷子会认为触压值过大
     for (uint8_t i = 0; i < BRUSH_NUM; i++)
@@ -458,6 +473,97 @@ void dev_zero_check_thread(void *arg)
             aos_task_exit(0);
         }
         aos_msleep(100);
+    }
+}
+
+/*                                                         =======================                                                         */
+/* ========================================================      车辆打滑监测      ======================================================== */
+/*                                                         =======================                                                         */
+
+void vehicle_skid_detect_thread(void *arg)
+{
+    bool isRecordExitSignalTime[SUPPORT_WASH_NUM_MAX] = {0};
+    bool isAddWashTailTime = false;
+    
+    while (1)
+    {
+        if(washCarNum > 0){
+            for (uint8_t i = 1; i < SUPPORT_WASH_NUM_MAX; i++)
+            {
+                if(WHEEL_SKID_NULL == carWash[i].wheelSkidArea){
+                    if(carWash[i].headPos != 0){
+                        carWash[i].wheelSkidTimeStamp = aos_now_ms();               //入口光电遮挡开始计时
+                        carWash[i].wheelSkidArea = HEAD_WHEEL_SKID_IN_1_2_CONVEYOR;
+                    }
+                }
+                else if(HEAD_WHEEL_SKID_IN_1_2_CONVEYOR == carWash[i].wheelSkidArea){
+                    if(!is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE)){
+                        if(!carWash[i].isFrontWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 30000){     //超过一定时间还没遮挡防闯，认为前轮打滑
+                            carWash[i].isFrontWheelSkid = true;      //前轮打滑
+                            set_error_state(9001, true);
+                            LOG_UPLOAD("Car %d front wheel skid in 1#_2# conveyor", i);
+                        }
+                    }
+                    else{
+                        if(!carWash[i].isBackWheelSkid
+                        && carWash[i].headProc < PROC_START_FRONT_BRUSH && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 40000){     //超过一定时间遮挡了防闯，但是一直没到前侧刷位置，认为后轮打滑
+                            carWash[i].isBackWheelSkid = true;      //后轮打滑
+                            set_error_state(9002, true);
+                            LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
+                        }
+                    }
+
+                    if(carWash[i].isWashCarHeadFinish){
+                        carWash[i].wheelSkidArea = TAIL_WHEEL_SKID_IN_1_2_CONVEYOR; //洗车头结束重新开始计时
+                        carWash[i].wheelSkidTimeStamp = aos_now_ms();
+                    }
+                }
+                else if(TAIL_WHEEL_SKID_IN_1_2_CONVEYOR == carWash[i].wheelSkidArea){
+                    if(is_signal_filter_trigger(SIGNAL_ENTRANCE)){                  //超过一定时间入口光电仍遮挡，认为后轮打滑
+                        if(!carWash[i].isBackWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 30000){
+                            carWash[i].isBackWheelSkid = true;      //后轮打滑
+                            set_error_state(9002, true);
+                            LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
+                        }
+                    }
+                    else{
+                        carWash[i].wheelSkidArea = HEAD_WHEEL_SKID_IN_2_3_CONVEYOR; //车辆完全离开预备区后，检测2，3输送带之间的打滑情况
+                        isRecordExitSignalTime[i] = false;
+                    }
+                }
+                else if(HEAD_WHEEL_SKID_IN_2_3_CONVEYOR == carWash[i].wheelSkidArea){
+                    if(!isRecordExitSignalTime[i]){
+                        if(is_signal_filter_trigger(SIGNAL_EXIT)){                  //出口光电遮挡开始计时
+                            isRecordExitSignalTime[i] = true;
+                            carWash[i].wheelSkidTimeStamp = aos_now_ms();
+                            isAddWashTailTime = !carWash[i].isWashCarTailFinish ? true : false;  //洗车尾结束前触发了出口光电，超时时间加上洗车尾的停留时间
+                        }
+                    }
+                    else{
+                        if(!is_signal_filter_trigger(SIGNAL_FINISH)){               //超过一定时间完成光电还没遮挡，认为前轮打滑
+                            if(!carWash[i].isFrontWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 35000 + (isAddWashTailTime ? 15000 : 0)){
+                                carWash[i].isFrontWheelSkid = true;      //前轮打滑
+                                set_error_state(9003, true);
+                                LOG_UPLOAD("Car %d front wheel skid in 2#_3# conveyor", i);
+                            }
+                        }
+                        else{
+                            carWash[i].wheelSkidArea = TAIL_WHEEL_SKID_IN_2_3_CONVEYOR;
+                            carWash[i].wheelSkidTimeStamp = aos_now_ms();           //触发完成光电后重新开始计时
+                        }
+                    }
+                }
+                else if(TAIL_WHEEL_SKID_IN_2_3_CONVEYOR == carWash[i].wheelSkidArea){
+                    if(!carWash[i].isBackWheelSkid
+                    && is_signal_filter_trigger(SIGNAL_EXIT) && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 45000){    //超过一定时间出口光电仍遮挡认为后轮打滑
+                        carWash[i].isBackWheelSkid = true;              //后轮打滑
+                        set_error_state(9004, true);
+                        LOG_UPLOAD("Car %d back wheel skid in 2#_3# conveyor", i);
+                    }
+                }
+            }
+        }
+        aos_msleep(1000);
     }
 }
 
@@ -1889,6 +1995,8 @@ int step_dev_wash(uint8_t *completeId)
                     carWash[entryCarIndex].tailPos = catrTailTempPos;   //记录车尾位置
                     LOG_UPLOAD("Car index %d, head pos %d, tail pos %d", entryCarIndex, carWash[entryCarIndex].headPos, carWash[entryCarIndex].tailPos);
                     isNewCarReadyWash = false;
+                    set_error_state(9001, false);       //车尾进入后清除1#_2#输送带处打滑标志
+                    set_error_state(9002, false);
                 }
             }
         }
@@ -1899,7 +2007,7 @@ int step_dev_wash(uint8_t *completeId)
         if(is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE)){
             carWash[entryCarIndex].tailPosSignalCheck = 0;
         }
-        else if(carWash[entryCarIndex].tailPosSignalCheck != 0){
+        else if(0 == carWash[entryCarIndex].tailPosSignalCheck){
             carWash[entryCarIndex].tailPosSignalCheck = workAreaConveyorEnc;
             LOG_UPLOAD("Signal check tail pos %d", carWash[entryCarIndex].tailPosSignalCheck);
         }
@@ -2616,6 +2724,10 @@ int step_dev_wash(uint8_t *completeId)
                                 LOG_UPLOAD("Front side brush move to pos err ret %d", ret);
                             }
                             else if(RET_COMPLETE == ret){
+                                if(isSideBrushCantMoveToPose
+                                && (!is_dev_move_sta_idle(FRONT_LEFT_BRUSH_MATCH_ID) || !is_dev_move_sta_idle(FRONT_RIGHT_BRUSH_MATCH_ID))){
+                                    front_side_brush_rotation(CRL_BOTH, CMD_STILL);         //无法洗车尾时直接停止前侧刷旋转
+                                }
                                 if(SIDE_BRUSH_POS_MIDDLE == sideBrushWashPos){
                                     sideBrushWashPos = SIDE_BRUSH_POS_LEFT;
                                     stepSta.isModuleDriverExecuted = false;                 //重置模型驱动
