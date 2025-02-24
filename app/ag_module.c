@@ -513,14 +513,14 @@ void vehicle_skid_detect_thread(void *arg)
                         }
                     }
 
-                    if(carWash[i].isWashCarHeadFinish){
-                        carWash[i].wheelSkidArea = TAIL_WHEEL_SKID_IN_1_2_CONVEYOR; //洗车头结束重新开始计时
+                    if(carWash[i].isFrontBrushWashBody){
+                        carWash[i].wheelSkidArea = TAIL_WHEEL_SKID_IN_1_2_CONVEYOR; //前侧刷开始洗车身时重新开始计时
                         carWash[i].wheelSkidTimeStamp = aos_now_ms();
                     }
                 }
                 else if(TAIL_WHEEL_SKID_IN_1_2_CONVEYOR == carWash[i].wheelSkidArea){
                     if(is_signal_filter_trigger(SIGNAL_ENTRANCE)){                  //超过一定时间入口光电仍遮挡，认为后轮打滑
-                        if(!carWash[i].isBackWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 30000){
+                        if(!carWash[i].isBackWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 35000){
                             carWash[i].isBackWheelSkid = true;      //后轮打滑
                             set_error_state(9002, true);
                             LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
@@ -540,8 +540,8 @@ void vehicle_skid_detect_thread(void *arg)
                         }
                     }
                     else{
-                        if(!is_signal_filter_trigger(SIGNAL_FINISH)){               //超过一定时间完成光电还没遮挡，认为前轮打滑
-                            if(!carWash[i].isFrontWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 35000 + (isAddWashTailTime ? 15000 : 0)){
+                        if(!is_signal_filter_trigger(SIGNAL_FINISH)){               //超过一定时间完成光电还没遮挡，认为前轮打滑————洗车尾过后触发出口送到完成光电处不打滑大概55S，洗车尾时间最长15S
+                            if(!carWash[i].isFrontWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > (55000 + (isAddWashTailTime ? 15000 : 0))){
                                 carWash[i].isFrontWheelSkid = true;      //前轮打滑
                                 set_error_state(9003, true);
                                 LOG_UPLOAD("Car %d front wheel skid in 2#_3# conveyor", i);
