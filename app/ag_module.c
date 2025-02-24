@@ -498,7 +498,7 @@ void vehicle_skid_detect_thread(void *arg)
                 }
                 else if(HEAD_WHEEL_SKID_IN_1_2_CONVEYOR == carWash[i].wheelSkidArea){
                     if(!is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE)){
-                        if(!carWash[i].isFrontWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 30000){     //超过一定时间还没遮挡防闯，认为前轮打滑
+                        if(!carWash[i].isFrontWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 35000){     //超过一定时间还没遮挡防闯，认为前轮打滑
                             carWash[i].isFrontWheelSkid = true;      //前轮打滑
                             set_error_state(9001, true);
                             LOG_UPLOAD("Car %d front wheel skid in 1#_2# conveyor", i);
@@ -506,7 +506,7 @@ void vehicle_skid_detect_thread(void *arg)
                     }
                     else{
                         if(!carWash[i].isBackWheelSkid
-                        && carWash[i].headProc < PROC_START_FRONT_BRUSH && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 40000){     //超过一定时间遮挡了防闯，但是一直没到前侧刷位置，认为后轮打滑
+                        && carWash[i].headProc < PROC_START_FRONT_BRUSH && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 45000){     //超过一定时间遮挡了防闯，但是一直没到前侧刷位置，认为后轮打滑
                             carWash[i].isBackWheelSkid = true;      //后轮打滑
                             set_error_state(9002, true);
                             LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
@@ -520,7 +520,7 @@ void vehicle_skid_detect_thread(void *arg)
                 }
                 else if(TAIL_WHEEL_SKID_IN_1_2_CONVEYOR == carWash[i].wheelSkidArea){
                     if(is_signal_filter_trigger(SIGNAL_ENTRANCE)){                  //超过一定时间入口光电仍遮挡，认为后轮打滑
-                        if(!carWash[i].isBackWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 35000){
+                        if(!carWash[i].isBackWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 45000){
                             carWash[i].isBackWheelSkid = true;      //后轮打滑
                             set_error_state(9002, true);
                             LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
@@ -2413,6 +2413,7 @@ int step_dev_wash(uint8_t *completeId)
                         }
                         water_system_control(WATER_NORMAL_SHAMPOO, false);
                         water_system_control(WATER_SWING_WATER, false);
+                        osal_dev_io_state_change(BOARD0_OUTPUT_SKIRT_BRUSH_VALVE, IO_DISABLE);
                         brush[BRUSH_TOP].runMode = BRUSH_MANUAL;    //洗车头时，停止顶刷跟随，上升一定距离，避免顶刷长时间刷车身
                         recordLifterPosValue = xp_osal_get_dev_pos(LIFTER_MATCH_ID);    //记录下当前升降值，用于后面下降恢复判定，避免这里因为某些原因没有动作，后面下降导致触压异常
                         lifter_move_time(CMD_BACKWARD, 1500);
@@ -2460,6 +2461,7 @@ int step_dev_wash(uint8_t *completeId)
                                 }
                                 water_system_control(WATER_NORMAL_SHAMPOO, true);
                                 water_system_control(WATER_SWING_WATER, true);
+                                osal_dev_io_state_change(BOARD0_OUTPUT_SKIRT_BRUSH_VALVE, IO_ENABLE);
                             }
                             ret = NOR_CONTINUE;
                         }
