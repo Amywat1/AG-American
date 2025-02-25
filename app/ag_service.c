@@ -1240,8 +1240,8 @@ void ready_area_detection_thread(void *arg)
             carInfo.isCarInReadyArea = true;
             if(isCarWantForwardExit) isCarMoveInMachine = true;
             carOutReadyAreaTimeStamp = aos_now_ms();
-            // if(!is_signal_filter_trigger(SIGNAL_ALL_IN) && !is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT)){
-            if(!is_signal_filter_trigger(SIGNAL_ALL_IN)){
+            if(!is_signal_filter_trigger(SIGNAL_ALL_IN) && !is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT)){
+            // if(!is_signal_filter_trigger(SIGNAL_ALL_IN)){
                 if(is_dev_move_sta_idle(GATE_1_MACH_ID) && !is_signal_filter_trigger(SIGNAL_GATE_1_CLOSE)){
                     gate_change_state(CRL_SECTION_1, GATE_CLOSE);
                 }
