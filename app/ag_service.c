@@ -712,7 +712,7 @@ static void model_status_update_thread(void *arg)
         appModule.localSts.sensor.fRightPutterPulse     = osal_is_io_trigger(BOARD2_INPUT_FRONT_RIGHT_MOVE_PULSE);
         appModule.localSts.sensor.bLeftPutterPulse      = osal_is_io_trigger(BOARD2_INPUT_BACK_LEFT_MOVE_PULSE);
         appModule.localSts.sensor.bRightPutterPulse     = osal_is_io_trigger(BOARD2_INPUT_BACK_RIGHT_MOVE_PULSE);
-        appModule.localSts.sensor.ground                = is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT);
+        appModule.localSts.sensor.ground                = !is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT);
         // appModule.localSts.sensor.gate1Err              = osal_is_io_trigger(BOARD4_INPUT_GATE_1_OVERLOAD);
         // appModule.localSts.sensor.sewageHigh            = osal_is_io_trigger(BOARD1_INPUT_SEWAGE_HIGH);
         appModule.localSts.sensor.shampooLess           = osal_is_io_trigger(BOARD1_INPUT_SHAMPOO_LESS_BULE);
@@ -1389,7 +1389,7 @@ void ready_area_detection_thread(void *arg)
             //停车光电未触发，提示前进
             if(PARK_TOO_BACK != carInfo.parkState){
                 carInfo.voiceCnt = 0;
-                xp_ag_osal_get()->screen.display(AG_CAR_FORWARD);
+                xp_ag_osal_get()->screen.display((wash.orderQueue[0].numberId != 0) ? AG_CAR_FORWARD : AG_CAR_WAIT);
             }
             if(isPlayForwardVoice){
                 if(0 == carInfo.voiceCnt || get_diff_ms(carInfo.parkStaStartT) > 10000){
