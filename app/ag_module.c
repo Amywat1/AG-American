@@ -498,7 +498,7 @@ void vehicle_skid_detect_thread(void *arg)
                 }
                 else if(HEAD_WHEEL_SKID_IN_1_2_CONVEYOR == carWash[i].wheelSkidArea){
                     if(!is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE)){
-                        if(!carWash[i].isFrontWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 27000){     //超过一定时间还没遮挡防闯，认为前轮打滑
+                        if(!carWash[i].isFrontWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 26000){     //超过一定时间还没遮挡防闯，认为前轮打滑
                             carWash[i].isFrontWheelSkid = true;      //前轮打滑
                             set_error_state(9001, true);
                             LOG_UPLOAD("Car %d front wheel skid in 1#_2# conveyor", i);
@@ -506,7 +506,7 @@ void vehicle_skid_detect_thread(void *arg)
                     }
                     else{
                         if(!carWash[i].isBackWheelSkid
-                        && carWash[i].headProc < PROC_START_FRONT_BRUSH && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 38000){     //超过一定时间遮挡了防闯，但是一直没到前侧刷位置，认为后轮打滑
+                        && carWash[i].headProc < PROC_START_FRONT_BRUSH && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 37000){     //超过一定时间遮挡了防闯，但是一直没到前侧刷位置，认为后轮打滑
                             carWash[i].isBackWheelSkid = true;      //后轮打滑
                             set_error_state(9002, true);
                             LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
@@ -541,7 +541,7 @@ void vehicle_skid_detect_thread(void *arg)
                     }
                     else{
                         if(!is_signal_filter_trigger(SIGNAL_FINISH)){               //超过一定时间完成光电还没遮挡，认为前轮打滑————洗车尾过后触发出口送到完成光电处不打滑大概55S，洗车尾时间最长15S
-                            if(!carWash[i].isFrontWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > (39000 + (isAddWashTailTime ? 15000 : 0))){
+                            if(!carWash[i].isFrontWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > (51000 + (isAddWashTailTime ? 18000 : 0))){
                                 carWash[i].isFrontWheelSkid = true;      //前轮打滑
                                 set_error_state(9003, true);
                                 LOG_UPLOAD("Car %d front wheel skid in 2#_3# conveyor", i);
@@ -555,7 +555,7 @@ void vehicle_skid_detect_thread(void *arg)
                 }
                 else if(TAIL_WHEEL_SKID_IN_2_3_CONVEYOR == carWash[i].wheelSkidArea){
                     if(!carWash[i].isBackWheelSkid
-                    && is_signal_filter_trigger(SIGNAL_EXIT) && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 60000){    //超过一定时间出口光电仍遮挡认为后轮打滑
+                    && is_signal_filter_trigger(SIGNAL_EXIT) && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 62000){    //超过一定时间出口光电仍遮挡认为后轮打滑
                         carWash[i].isBackWheelSkid = true;              //后轮打滑
                         set_error_state(9004, true);
                         LOG_UPLOAD("Car %d back wheel skid in 2#_3# conveyor", i);

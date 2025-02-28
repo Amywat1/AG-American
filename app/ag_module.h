@@ -80,6 +80,7 @@ typedef enum{
 	PARK_TOO_LEFT,
 	PARK_TOO_RIGHT,
 	PARK_TOO_LONG,
+	PARK_OUT_NO_ORDER,
 	PARK_OK,
 } Type_ParkState_Enum;
 

@@ -1020,11 +1020,12 @@ void model_cmd_executed_thread(void *arg)
             if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_electrical_reset", 0);
             break;
         case CMD_CANCEL_ORDER:
-            //取消当前最新未启动订单
-            for (uint8_t i = 0; i < MAX_QUEUE_ORDER_NUMBER; i++)
-            {
-                memcpy(&wash.orderQueue[i], &wash.orderQueue[i + 1], sizeof(Type_OrderInfo_Def));
-            }
+            // for (uint8_t i = 0; i < MAX_QUEUE_ORDER_NUMBER; i++)
+            // {
+            //     memcpy(&wash.orderQueue[i], &wash.orderQueue[i + 1], sizeof(Type_OrderInfo_Def));
+            // }
+            //取消所有订单
+            memset(wash.orderQueue, 0, sizeof(wash.orderQueue));
             if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_cancel_order", 0);
             break;
         case CMD_FLOODLIGHT:            app_crl_dev_set(APP_CRL_FLOODLIGHT, appModule.localCmd.floodlight); break;
@@ -1372,7 +1373,7 @@ void ready_area_detection_thread(void *arg)
                 if(isPlayForwardVoice){
                     if(0 == carInfo.voiceCnt || get_diff_ms(carInfo.parkStaStartT) > 10000){
                         carInfo.voiceCnt++;
-                        voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_FORWARD);
+                        // voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_FORWARD);
                         carInfo.parkStaStartT = aos_now_ms();
                     }
                     if(carInfo.voiceCnt > 1){
@@ -1386,22 +1387,30 @@ void ready_area_detection_thread(void *arg)
             }
         }
         else{
-            //停车光电未触发，提示前进
-            if(PARK_TOO_BACK != carInfo.parkState){
-                carInfo.voiceCnt = 0;
-                xp_ag_osal_get()->screen.display((wash.orderQueue[0].numberId != 0) ? AG_CAR_FORWARD : AG_CAR_WAIT);
-            }
-            if(isPlayForwardVoice){
-                if(0 == carInfo.voiceCnt || get_diff_ms(carInfo.parkStaStartT) > 10000){
-                    carInfo.voiceCnt++;
-                    voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_FORWARD);
-                    carInfo.parkStaStartT = aos_now_ms();
+            //停车光电未触发，有订单时显示请前进，没有订单时显示请等待
+            if(wash.orderQueue[0].numberId != 0){
+                if(PARK_TOO_BACK != carInfo.parkState){
+                    carInfo.voiceCnt = 0;
+                    xp_ag_osal_get()->screen.display(AG_CAR_FORWARD);
                 }
-                if(carInfo.voiceCnt > 1){
-                    isPlayForwardVoice = false;
+                if(isPlayForwardVoice){
+                    if(0 == carInfo.voiceCnt || get_diff_ms(carInfo.parkStaStartT) > 10000){
+                        carInfo.voiceCnt++;
+                        // voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_FORWARD);    //FIXME 没有听到前进的语音
+                        carInfo.parkStaStartT = aos_now_ms();
+                    }
+                    if(carInfo.voiceCnt > 1){
+                        isPlayForwardVoice = false;
+                    }
                 }
+                carInfo.parkState = PARK_TOO_BACK;
             }
-            carInfo.parkState = PARK_TOO_BACK;
+            else{
+                if(PARK_OUT_NO_ORDER != carInfo.parkState){
+                    xp_ag_osal_get()->screen.display(AG_CAR_WAIT);
+                }
+                carInfo.parkState = PARK_OUT_NO_ORDER;
+            }
         }
 
         //有订单且无车辆在预备区准备则打开1号道闸
