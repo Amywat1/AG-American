@@ -520,7 +520,7 @@ void vehicle_skid_detect_thread(void *arg)
                 }
                 else if(TAIL_WHEEL_SKID_IN_1_2_CONVEYOR == carWash[i].wheelSkidArea){
                     if(!is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){          //超过一定时间仍未遮挡防追尾，认为后轮打滑
-                        if(!carWash[i].isBackWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 47000){
+                        if(!carWash[i].isBackWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 50000){
                             carWash[i].isBackWheelSkid = true;      //后轮打滑
                             set_error_state(9002, true);
                             LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
