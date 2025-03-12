@@ -215,8 +215,10 @@ typedef struct{
     bool                isFrontChangeBrushRotation;
     bool                isCarMoveCompleteArea;
     bool                isBackBrushFinish;
-    bool                isFrontWheelSkid;
-    bool                isBackWheelSkid;
+    bool                isFrontWheelSkidIn12;
+    bool                isBackWheelSkidIn12;
+    bool                isFrontWheelSkidIn23;
+    bool                isBackWheelSkidIn23;
 
     Type_WheelSkidAreaType_Enum wheelSkidArea;      //车辆打滑位置
     uint64_t            wheelSkidTimeStamp;
@@ -482,8 +484,8 @@ void dev_zero_check_thread(void *arg)
 
 void vehicle_skid_detect_thread(void *arg)
 {
-    bool isRecordExitSignalTime[SUPPORT_WASH_NUM_MAX] = {0};
-    bool isAddWashTailTime = false;
+    bool isHeadWheelSkidIn12Conveyor = false;
+    bool isAddWashHeadTime = false;
     
     while (1)
     {
@@ -494,20 +496,22 @@ void vehicle_skid_detect_thread(void *arg)
                     if(carWash[i].headPos != 0){
                         carWash[i].wheelSkidTimeStamp = aos_now_ms();               //入口光电遮挡开始计时
                         carWash[i].wheelSkidArea = HEAD_WHEEL_SKID_IN_1_2_CONVEYOR;
+                        isHeadWheelSkidIn12Conveyor = false;
                     }
                 }
                 else if(HEAD_WHEEL_SKID_IN_1_2_CONVEYOR == carWash[i].wheelSkidArea){
                     if(!is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE)){
-                        if(!carWash[i].isFrontWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 26000){     //超过一定时间还没遮挡防闯，认为前轮打滑
-                            carWash[i].isFrontWheelSkid = true;      //前轮打滑
+                        if(!carWash[i].isFrontWheelSkidIn12 && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 26000){     //超过一定时间还没遮挡防闯，认为前轮打滑
+                            carWash[i].isFrontWheelSkidIn12 = true;      //前轮打滑
                             set_error_state(9001, true);
                             LOG_UPLOAD("Car %d front wheel skid in 1#_2# conveyor", i);
+                            isHeadWheelSkidIn12Conveyor = true;
                         }
                     }
                     else{
-                        if(!carWash[i].isBackWheelSkid
+                        if(!isHeadWheelSkidIn12Conveyor && !carWash[i].isBackWheelSkidIn12
                         && carWash[i].headProc < PROC_START_FRONT_BRUSH && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 37000){     //超过一定时间遮挡了防闯，但是一直没到前侧刷位置，认为后轮打滑
-                            carWash[i].isBackWheelSkid = true;      //后轮打滑
+                            carWash[i].isBackWheelSkidIn12 = true;      //后轮打滑
                             set_error_state(9002, true);
                             LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
                         }
@@ -520,45 +524,41 @@ void vehicle_skid_detect_thread(void *arg)
                 }
                 else if(TAIL_WHEEL_SKID_IN_1_2_CONVEYOR == carWash[i].wheelSkidArea){
                     if(!is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){          //超过一定时间仍未遮挡防追尾，认为后轮打滑
-                        if(!carWash[i].isBackWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 50000){
-                            carWash[i].isBackWheelSkid = true;      //后轮打滑
+                        if(!carWash[i].isBackWheelSkidIn12 && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 50000){
+                            carWash[i].isBackWheelSkidIn12 = true;      //后轮打滑
                             set_error_state(9002, true);
                             LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
                         }
                     }
                     else{
                         carWash[i].wheelSkidArea = HEAD_WHEEL_SKID_IN_2_3_CONVEYOR; //车辆完全离开预备区后，检测2，3输送带之间的打滑情况
-                        isRecordExitSignalTime[i] = false;
                     }
                 }
                 else if(HEAD_WHEEL_SKID_IN_2_3_CONVEYOR == carWash[i].wheelSkidArea){
-                    if(!isRecordExitSignalTime[i]){
-                        if(is_signal_filter_trigger(SIGNAL_EXIT)){                  //出口光电遮挡开始计时
-                            isRecordExitSignalTime[i] = true;
-                            carWash[i].wheelSkidTimeStamp = aos_now_ms();
-                            isAddWashTailTime = !carWash[i].isWashCarTailFinish ? true : false;  //洗车尾结束前触发了出口光电，超时时间加上洗车尾的停留时间
+                    if(carWash[i].isWashCarTailFinish){
+                        if(!carWash[i].isFrontWheelSkidIn23 && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 41000){
+                            carWash[i].isFrontWheelSkidIn23 = true;      //前轮打滑
+                            set_error_state(9003, true);
+                            LOG_UPLOAD("Car %d front wheel skid in 2#_3# conveyor", i);
                         }
                     }
                     else{
-                        if(!is_signal_filter_trigger(SIGNAL_FINISH)){               //超过一定时间完成光电还没遮挡，认为前轮打滑————洗车尾过后触发出口送到完成光电处不打滑大概55S，洗车尾时间最长15S
-                            if(!carWash[i].isFrontWheelSkid && get_diff_ms(carWash[i].wheelSkidTimeStamp) > (51000 + (isAddWashTailTime ? 18000 : 0))){
-                                carWash[i].isFrontWheelSkid = true;      //前轮打滑
-                                set_error_state(9003, true);
-                                LOG_UPLOAD("Car %d front wheel skid in 2#_3# conveyor", i);
-                            }
-                        }
-                        else{
-                            carWash[i].wheelSkidArea = TAIL_WHEEL_SKID_IN_2_3_CONVEYOR;
-                            carWash[i].wheelSkidTimeStamp = aos_now_ms();           //触发完成光电后重新开始计时
-                        }
+                        carWash[i].wheelSkidTimeStamp = aos_now_ms();
+                    }
+
+                    if(!is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){
+                        carWash[i].wheelSkidArea = TAIL_WHEEL_SKID_IN_2_3_CONVEYOR;
+                        carWash[i].wheelSkidTimeStamp = aos_now_ms();               //离开防追尾光电后重新开始计时
+                        isAddWashHeadTime = (washCarNum > 1 && !carWash[headWashCarId].isWashCarHeadFinish) ? true : false;
                     }
                 }
                 else if(TAIL_WHEEL_SKID_IN_2_3_CONVEYOR == carWash[i].wheelSkidArea){
-                    if(!carWash[i].isBackWheelSkid
-                    && is_signal_filter_trigger(SIGNAL_EXIT) && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 62000){    //超过一定时间出口光电仍遮挡认为后轮打滑
-                        carWash[i].isBackWheelSkid = true;              //后轮打滑
-                        set_error_state(9004, true);
-                        LOG_UPLOAD("Car %d back wheel skid in 2#_3# conveyor", i);
+                    if(is_signal_filter_trigger(SIGNAL_EXIT)){
+                        if(!carWash[i].isBackWheelSkidIn23 && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 16000 + (isAddWashHeadTime ? 18000 : 0)){ //超过一定时间出口光电仍遮挡认为后轮打滑
+                            carWash[i].isBackWheelSkidIn23 = true;              //后轮打滑
+                            set_error_state(9004, true);
+                            LOG_UPLOAD("Car %d back wheel skid in 2#_3# conveyor", i);
+                        }
                     }
                 }
             }
@@ -2053,10 +2053,12 @@ int step_dev_wash(uint8_t *completeId)
     //防追尾判定
     bool isTriggerRearEndProtect = false;
     if(carWash[entryCarIndex].headProc >= PROC_START_FRONT_BRUSH){
-        if(washCarNum > 1){                                            //如果有多辆车在服务中
+        if(washCarNum > 1){                                             //如果有多辆车在服务中
             if(is_signal_filter_trigger(SIGNAL_EXIT)){
                 if(is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){
-                    isTriggerRearEndProtect = true;
+                    //前车没有离开防追尾时，若后车没有闯入则直接报警停机（车头在2#，3#链板处打滑），若后车闯入，检测到车辆打滑就报警
+                    if(!isCarIntrude || carWash[headWashCarId].isFrontWheelSkidIn23) set_error_state(8140, true);
+                    // isTriggerRearEndProtect = true;
                 }
             }
             else if(is_signal_filter_trigger(SIGNAL_FINISH) && is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){
