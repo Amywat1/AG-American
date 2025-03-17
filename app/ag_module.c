@@ -549,7 +549,7 @@ void vehicle_skid_detect_thread(void *arg)
                     if(!is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){
                         carWash[i].wheelSkidArea = TAIL_WHEEL_SKID_IN_2_3_CONVEYOR;
                         carWash[i].wheelSkidTimeStamp = aos_now_ms();               //离开防追尾光电后重新开始计时
-                        isAddWashHeadTime = (washCarNum > 1 && !carWash[headWashCarId].isWashCarHeadFinish) ? true : false;
+                        isAddWashHeadTime = (washCarNum > 1 && !carWash[entryCarIndex].isWashCarHeadFinish) ? true : false;
                     }
                 }
                 else if(TAIL_WHEEL_SKID_IN_2_3_CONVEYOR == carWash[i].wheelSkidArea){
@@ -2012,11 +2012,11 @@ int step_dev_wash(uint8_t *completeId)
             LOG_UPLOAD("Signal check tail pos %d", carWash[entryCarIndex].tailPosSignalCheck);
         }
         //在顶刷流程结束后使用辅助确认的车尾值
-        if(carWash[entryCarIndex].tailProc >= PROC_FINISH_TOP_BRUSH
-        && carWash[entryCarIndex].tailPosSignalCheck > carWash[entryCarIndex].tailPos + SIGNAL_ENTRANCE_TO_AVOID_INTRUDE_OFFSET){
-            uint32_t checkDiffValue = carWash[entryCarIndex].tailPosSignalCheck - carWash[entryCarIndex].tailPos - SIGNAL_ENTRANCE_TO_AVOID_INTRUDE_OFFSET;
-            carWash[entryCarIndex].tailPos += checkDiffValue;
-            LOG_UPLOAD("Auxiliary signal check car tail, tail pos add %d, now tail %d", checkDiffValue, carWash[entryCarIndex].tailPos);
+        if(carWash[entryCarIndex].tailProc >= PROC_FINISH_TOP_BRUSH && carWash[entryCarIndex].tailPosSignalCheck != 0
+        && carWash[entryCarIndex].tailPosSignalCheck < carWash[entryCarIndex].tailPos + SIGNAL_ENTRANCE_TO_AVOID_INTRUDE_OFFSET){
+            uint32_t checkDiffValue = carWash[entryCarIndex].tailPos + SIGNAL_ENTRANCE_TO_AVOID_INTRUDE_OFFSET - carWash[entryCarIndex].tailPosSignalCheck;
+            carWash[entryCarIndex].tailPos -= checkDiffValue;
+            LOG_UPLOAD("Auxiliary signal check car tail, tail pos sub %d, now tail %d", checkDiffValue, carWash[entryCarIndex].tailPos);
         }
     }
 
