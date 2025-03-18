@@ -1966,6 +1966,7 @@ void xp_service_thread(void* arg)
                 if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_wash_flag_2", 0);
                 set_new_car_ready_wash_falg(false);
                 stop_all_dev_run();
+                clear_service_car_data();
                 if(false == get_emc_power_off_sta()){
                     if(!is_signal_filter_trigger(SIGNAL_GATE_1_OPEN))    gate_change_state(CRL_SECTION_1, GATE_OPEN);    //首次切换到停止或异常状态，打开两个道闸
                     gate_change_state(CRL_SECTION_2, GATE_OPEN);

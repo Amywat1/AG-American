@@ -501,7 +501,7 @@ void vehicle_skid_detect_thread(void *arg)
                 }
                 else if(HEAD_WHEEL_SKID_IN_1_2_CONVEYOR == carWash[i].wheelSkidArea){
                     if(!is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE)){
-                        if(!carWash[i].isFrontWheelSkidIn12 && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 26000){     //超过一定时间还没遮挡防闯，认为前轮打滑
+                        if(!carWash[i].isFrontWheelSkidIn12 && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 27000){     //超过一定时间还没遮挡防闯，认为前轮打滑
                             carWash[i].isFrontWheelSkidIn12 = true;      //前轮打滑
                             set_error_state(9001, true);
                             LOG_UPLOAD("Car %d front wheel skid in 1#_2# conveyor", i);
@@ -563,7 +563,7 @@ void vehicle_skid_detect_thread(void *arg)
                 }
             }
         }
-        aos_msleep(1000);
+        aos_msleep(500);
     }
 }
 
@@ -3850,6 +3850,19 @@ void wash_crl_variable_init(void)
         memset(&brush[i], 0, sizeof(Type_BrushInfo_Def));
         brush[i].pressWarning = (BRUSH_TOP == i) ? TOP_BRUSH_WARNING_CUR : SIDE_BRUSH_WARNING_CUR;
     }
+}
+
+/**
+ * @brief       清空洗车数据
+ */
+void clear_service_car_data(void)
+{
+    for (uint8_t i = 0; i < SUPPORT_WASH_NUM_MAX; i++)
+    {
+        memset(&carWash[i], 0, sizeof(Type_CarWashInfo_Def));
+        carWash[i].topLifter = INIT_CAR_TOP_POS;
+    }
+    washCarNum = 0;
 }
 
 /**
