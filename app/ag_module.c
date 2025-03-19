@@ -510,15 +510,15 @@ void vehicle_skid_detect_thread(void *arg)
                     }
                     else{
                         if(!isHeadWheelSkidIn12Conveyor && !carWash[i].isBackWheelSkidIn12
-                        && carWash[i].headProc < PROC_START_FRONT_BRUSH && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 37000){     //超过一定时间遮挡了防闯，但是一直没到前侧刷位置，认为后轮打滑
+                        && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 37000){     //超过一定时间遮挡了防闯，但是一直没到前侧刷位置，认为后轮打滑
                             carWash[i].isBackWheelSkidIn12 = true;      //后轮打滑
                             set_error_state(9002, true);
                             LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
                         }
                     }
 
-                    if(carWash[i].isFrontBrushWashBody){
-                        carWash[i].wheelSkidArea = TAIL_WHEEL_SKID_IN_1_2_CONVEYOR; //前侧刷开始洗车身时重新开始计时
+                    if(carWash[i].headProc >= PROC_START_FRONT_BRUSH){
+                        carWash[i].wheelSkidArea = TAIL_WHEEL_SKID_IN_1_2_CONVEYOR; //开始前侧刷时重新开始计时
                         carWash[i].wheelSkidTimeStamp = aos_now_ms();
                     }
                 }

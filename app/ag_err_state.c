@@ -92,7 +92,7 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     // {8105,   false,      false,      0,      500,                500,                E_WARNING}, //相序报警
     {8106,   false,      false,      0,      5000,               500,                E_WARNING}, //水压不足
     {8107,   false,      false,      0,      500,                500,                E_WARNING}, //高度超高
-    {8108,   false,      false,      0,      2000,               500,                E_WARNING}, //顶刷旋转电流超高
+    {8108,   false,      false,      0,      3000,               500,                E_WARNING}, //顶刷旋转电流超高
     {8109,   false,      false,      0,      500,                500,                E_WARNING}, //车头位置丢失报警（侧刷合30S未检测到车头）
     {8110,   false,      false,      0,      500,                500,                E_WARNING}, //前侧刷启动时低位报警（洗车头过程中侧刷合检测）
     {8111,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //洗车超时报警
