@@ -205,6 +205,7 @@ typedef struct{
     Type_ProcType_Enum  tailProc;           //车尾位置的洗车进程
     Type_ProcType_Enum  lastTailProc;       //车尾位置上次的洗车进程
     bool                isTailProcChanged;  //车头洗车进程是否改变
+    bool                isCarIntrude;       //车辆是否闯入
 
     bool                isWashCarHeadFinish;
     bool                isWashCarTailFinish;
@@ -523,8 +524,8 @@ void vehicle_skid_detect_thread(void *arg)
                     }
                 }
                 else if(TAIL_WHEEL_SKID_IN_1_2_CONVEYOR == carWash[i].wheelSkidArea){
-                    if(!is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){          //超过一定时间仍未遮挡防追尾，认为后轮打滑
-                        if(!carWash[i].isBackWheelSkidIn12 && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 50000){
+                    if(!is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){          //超过一定时间仍未遮挡防追尾，认为后轮打滑（未闯需要加上洗车头时间）
+                        if(!carWash[i].isBackWheelSkidIn12 && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 50000 + (carWash[i].isCarIntrude ? 0 : 16000)){
                             carWash[i].isBackWheelSkidIn12 = true;      //后轮打滑
                             set_error_state(9002, true);
                             LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
@@ -554,7 +555,7 @@ void vehicle_skid_detect_thread(void *arg)
                 }
                 else if(TAIL_WHEEL_SKID_IN_2_3_CONVEYOR == carWash[i].wheelSkidArea){
                     if(is_signal_filter_trigger(SIGNAL_EXIT)){
-                        if(!carWash[i].isBackWheelSkidIn23 && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 16000 + (isAddWashHeadTime ? 18000 : 0)){ //超过一定时间出口光电仍遮挡认为后轮打滑
+                        if(!carWash[i].isBackWheelSkidIn23 && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 16000 + (isAddWashHeadTime ? 16000 : 0)){ //超过一定时间出口光电仍遮挡认为后轮打滑
                             carWash[i].isBackWheelSkidIn23 = true;              //后轮打滑
                             set_error_state(9004, true);
                             LOG_UPLOAD("Car %d back wheel skid in 2#_3# conveyor", i);
@@ -1308,10 +1309,10 @@ static int module_side_putters_open(void)
 /**
  * @brief       毛刷基准电流值校准
  * @param[in]	brushType               校准的毛刷类型
- * @param[in]	isCarIntrude            车辆是否闯入
+ * @param[in]	isIntrude               车辆是否闯入
  * @return      int                 
  */
-static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool isCarIntrude)
+static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool isIntrude)
 {
     static Type_ModuleExeSta_Def moduleSta = {0};
     static uint8_t recordCaliCnt = 0;
@@ -1347,10 +1348,10 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
             front_side_brush_rotation(CRL_ONLY_RIGHT, CMD_BACKWARD);
             water_system_control(WATER_FRONT_SIDE, true);
             // front_side_brush_move_pos(CRL_BOTH, CMD_FORWARD, PUTTER_GO_MIDDLE_OFFSET);
-            front_side_brush_move_time(CRL_BOTH, CMD_FORWARD, isCarIntrude ? 800 : 5500);
+            front_side_brush_move_time(CRL_BOTH, CMD_FORWARD, isIntrude ? 800 : 5500);
             currentSum[BRUSH_FRONT_LEFT] = 0;
             currentSum[BRUSH_FRONT_RIGHT] = 0;
-            carIntrudeRecordSta = isCarIntrude;
+            carIntrudeRecordSta = isIntrude;
             frontBrushMovetimeStamp = aos_now_ms();
             break;
         case BRUSH_SIDE_BACK:
@@ -1362,7 +1363,7 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
             back_side_brush_rotation(CRL_ONLY_RIGHT, CMD_BACKWARD);
             water_system_control(WATER_BACK_SIDE, true);
             // back_side_brush_move_pos(CRL_BOTH, CMD_FORWARD, 30);
-            back_side_brush_move_time(CRL_BOTH, CMD_FORWARD, isCarIntrude ? 800 : 3500);
+            back_side_brush_move_time(CRL_BOTH, CMD_FORWARD, isIntrude ? 800 : 3500);
             currentSum[BRUSH_BACK_LEFT] = 0;
             currentSum[BRUSH_BACK_RIGHT] = 0;
             break;
@@ -1377,7 +1378,7 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
     if(moduleSta.isComplete) return RET_COMPLETE;               //避免完成后重复调用，一直保持完成状态
 
     //前侧刷校准过程中如果判定闯入，前侧刷回到安全位置，不洗车头
-    if(BRUSH_SIDE_FRONT == brushType && false == carIntrudeRecordSta && isCarIntrude){
+    if(BRUSH_SIDE_FRONT == brushType && false == carIntrudeRecordSta && isIntrude){
         if(get_diff_ms(frontBrushMovetimeStamp) > 800){
             if(get_diff_ms(frontBrushMovetimeStamp) > 1800){        //回退量不大就不退了
                 front_side_brush_move_time(CRL_BOTH, CMD_BACKWARD, get_diff_ms(frontBrushMovetimeStamp) - 800 + 500);    //回退时增加一定补偿值
@@ -1916,7 +1917,6 @@ int step_dev_wash(uint8_t *completeId)
     static uint64_t carWashTimeStamp[SUPPORT_WASH_NUM_MAX] = {0};   //车辆进入的时间戳
     static uint64_t carProtectTimeStamp = 0;        //防追尾时停止的时间戳
     static uint8_t voiceCnt = 0;
-    static bool isCarIntrude = false;
     static bool isPickupTruck = false;
     static uint32_t catrTailTempPos = 0;            //车尾临时值，等待确定后再赋值车尾判定值
     static bool isCarMoveToWash = false;
@@ -1973,7 +1973,7 @@ int step_dev_wash(uint8_t *completeId)
                     brush[BRUSH_BACK_RIGHT].isReadyCalibrate    = false;
                     brush[BRUSH_BACK_RIGHT].isCalibrated        = false;
                     carWashTimeStamp[entryCarIndex] = aos_now_ms();
-                    isCarIntrude = false;
+                    carWash[entryCarIndex].isCarIntrude = false;
                     isPickupTruck = false;
                     // set_error_state(8126, false);
                     recordWorkAreaConveyorEnc = 0;
@@ -2021,9 +2021,9 @@ int step_dev_wash(uint8_t *completeId)
     }
 
     //防闯入判定（因为顶刷校准完成后就会开始前侧刷电流校准，正常前侧刷会移动到中间洗车头的位置，所以需要在前侧刷校准前确定车辆是否闯入）
-    if(!isCarIntrude && carWash[entryCarIndex].headOffsetPos > 0 && carWash[entryCarIndex].headOffsetPos < washProcPos.startTopBrush
+    if(!carWash[entryCarIndex].isCarIntrude && carWash[entryCarIndex].headOffsetPos > 0 && carWash[entryCarIndex].headOffsetPos < washProcPos.startTopBrush
     && is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE)){
-        isCarIntrude = true;
+        carWash[entryCarIndex].isCarIntrude = true;
         carWash[entryCarIndex].headMoveValue = washProcPos.startTopBrush;     //闯入后偏移闯入车辆位置，认为已经到了洗车顶位置
         LOG_UPLOAD("Have car intrude !");
         // set_error_state(8126, true);
@@ -2057,7 +2057,7 @@ int step_dev_wash(uint8_t *completeId)
             if(is_signal_filter_trigger(SIGNAL_EXIT)){
                 if(is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){
                     //前车没有离开防追尾时，若后车没有闯入则直接报警停机（车头在2#，3#链板处打滑），若后车闯入，检测到车辆打滑就报警
-                    if(!isCarIntrude || carWash[headWashCarId].isFrontWheelSkidIn23) set_error_state(8140, true);
+                    if(!carWash[entryCarIndex].isCarIntrude || carWash[headWashCarId].isFrontWheelSkidIn23) set_error_state(8140, true);
                     // isTriggerRearEndProtect = true;
                 }
             }
@@ -2234,7 +2234,7 @@ int step_dev_wash(uint8_t *completeId)
                 }
                 else{
                     //顶刷电流校准（校准过程中，顶刷降到下限位）
-                    ret = module_brush_current_calibrate(BRUSH_TOP, isCarIntrude);    //需保证在车辆到达顶刷位置前完成电流校准
+                    ret = module_brush_current_calibrate(BRUSH_TOP, carWash[i].isCarIntrude);    //需保证在车辆到达顶刷位置前完成电流校准
                     if(ret < 0){
                         return ret;
                         LOG_UPLOAD("module_brush_current_calibrate top err ret %d",ret);
@@ -2274,7 +2274,7 @@ int step_dev_wash(uint8_t *completeId)
                     }
                 }
                 else{
-                    ret = module_brush_current_calibrate(BRUSH_SIDE_FRONT, isCarIntrude);   //需保证在车辆到达前侧刷位置前完成电流校准
+                    ret = module_brush_current_calibrate(BRUSH_SIDE_FRONT, carWash[i].isCarIntrude);   //需保证在车辆到达前侧刷位置前完成电流校准
                     if(ret < 0){
                         return ret;
                         LOG_UPLOAD("module_brush_current_calibrate front brush err ret %d", ret);
@@ -2283,7 +2283,7 @@ int step_dev_wash(uint8_t *completeId)
                         ret = NOR_CONTINUE;
                         brush[BRUSH_FRONT_LEFT].isCalibrated = true;
                         brush[BRUSH_FRONT_RIGHT].isCalibrated = true;
-                        if(isCarIntrude){
+                        if(carWash[i].isCarIntrude){
                             carWash[i].headProc = PROC_START_FRONT_BRUSH;
                             LOG_UPLOAD("Car intrude, change proc to start front brush immediately");
                         }
@@ -2310,7 +2310,7 @@ int step_dev_wash(uint8_t *completeId)
                     //
                 }
                 else{
-                    ret = module_brush_current_calibrate(BRUSH_SIDE_BACK, isCarIntrude);    //需保证在车辆到达后侧刷位置前完成电流校准
+                    ret = module_brush_current_calibrate(BRUSH_SIDE_BACK, carWash[i].isCarIntrude);    //需保证在车辆到达后侧刷位置前完成电流校准
                     if(ret < 0){
                         return ret;
                         LOG_UPLOAD("module_brush_current_calibrate back brush err ret %d", ret);
@@ -2374,14 +2374,14 @@ int step_dev_wash(uint8_t *completeId)
                 break;
             case PROC_START_TOP_BRUSH:              //开始进程洗车顶
                 if(carWash[i].isHeadProcChanged){
-                    if(!brush[BRUSH_TOP].isCalibrated && !isCarIntrude){
+                    if(!brush[BRUSH_TOP].isCalibrated && !carWash[i].isCarIntrude){
                         return -6;
                         LOG_UPLOAD("Proc start top brush but not calibrated");
                     }
                     carWash[i].isHeadProcChanged = false;
                     //顶刷跟随在校准完就开启，不需要等到位置到达，防止有车闯入的情况
                     //有车闯入会直接跳到洗车顶，补齐前面的流程动作
-                    if(isCarIntrude){
+                    if(carWash[i].isCarIntrude){
                         osal_dev_io_state_change(BOARD4_OUTPUT_LEFT_SKIRT_ROTATION, IO_ENABLE);
                         osal_dev_io_state_change(BOARD4_OUTPUT_RIGHT_SKIRT_ROTATION, IO_ENABLE);
                         osal_dev_io_state_change(BOARD0_OUTPUT_SKIRT_BRUSH_VALVE, IO_ENABLE);
@@ -2409,7 +2409,7 @@ int step_dev_wash(uint8_t *completeId)
                         LOG_UPLOAD("Proc start front side brush but not calibrated");
                     }
                     carWash[i].isHeadProcChanged = false;
-                    if(!isCarIntrude){
+                    if(!carWash[i].isCarIntrude){
                         conveyor_move(CRL_SECTION_2, CMD_STILL);
                         stepSta.isModuleDriverExecuted = false;     //重置模型驱动
                         sideBrushWashPos = SIDE_BRUSH_POS_LEFT;     //开始前侧刷时，侧刷已经在中间，不需要再移动到中间
