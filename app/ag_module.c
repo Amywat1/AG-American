@@ -560,6 +560,9 @@ void vehicle_skid_detect_thread(void *arg)
                             set_error_state(9004, true);
                             LOG_UPLOAD("Car %d back wheel skid in 2#_3# conveyor", i);
                         }
+                        if(is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){  //防追尾重新遮挡则重新检测前轮打滑（大车轮毂处可能漏光）
+                            carWash[i].wheelSkidArea = HEAD_WHEEL_SKID_IN_2_3_CONVEYOR;
+                        }
                     }
                 }
             }
