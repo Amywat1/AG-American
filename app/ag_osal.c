@@ -2221,7 +2221,7 @@ void xp_osal_dev_run_thread(void* arg)
                 else{
                     (lastDevPos[i] != devPos) ? encSta.errCnt[i]++ : (encSta.errCnt[i] = 0);
                 }
-                if(encSta.errCnt[i] > 5){
+                if(encSta.errCnt[i] > 10){
                     encSta.errCnt[i] = 0;
                     xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
                     if(osal_error_upload != NULL){

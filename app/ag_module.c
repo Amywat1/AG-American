@@ -511,7 +511,7 @@ void vehicle_skid_detect_thread(void *arg)
                     }
                     else{
                         if(!isHeadWheelSkidIn12Conveyor && !carWash[i].isBackWheelSkidIn12
-                        && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 37000){     //超过一定时间遮挡了防闯，但是一直没到前侧刷位置，认为后轮打滑
+                        && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 43000){     //超过一定时间遮挡了防闯，但是一直没到前侧刷位置，认为后轮打滑
                             carWash[i].isBackWheelSkidIn12 = true;      //后轮打滑
                             set_error_state(9002, true);
                             LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
@@ -524,15 +524,17 @@ void vehicle_skid_detect_thread(void *arg)
                     }
                 }
                 else if(TAIL_WHEEL_SKID_IN_1_2_CONVEYOR == carWash[i].wheelSkidArea){
-                    if(!is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){          //超过一定时间仍未遮挡防追尾，认为后轮打滑（未闯需要加上洗车头时间）
-                        if(!carWash[i].isBackWheelSkidIn12 && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 50000 + (carWash[i].isCarIntrude ? 0 : 16000)){
-                            carWash[i].isBackWheelSkidIn12 = true;      //后轮打滑
-                            set_error_state(9002, true);
-                            LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
+                    if(1 == washCarNum){        //只有一辆车的时候再进入判断，避免因为前车打滑等情况触发防追尾光电，影响后车判断
+                        if(!is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){          //超过一定时间仍未遮挡防追尾，认为后轮打滑（未闯需要加上洗车头时间）——误判闯入会导致误判打滑
+                            // if(!carWash[i].isBackWheelSkidIn12 && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 50000 + (carWash[i].isCarIntrude ? 0 : 16000)){
+                            //     carWash[i].isBackWheelSkidIn12 = true;      //后轮打滑
+                            //     set_error_state(9002, true);
+                            //     LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
+                            // }
                         }
-                    }
-                    else{
-                        carWash[i].wheelSkidArea = HEAD_WHEEL_SKID_IN_2_3_CONVEYOR; //车辆完全离开预备区后，检测2，3输送带之间的打滑情况
+                        else{
+                            carWash[i].wheelSkidArea = HEAD_WHEEL_SKID_IN_2_3_CONVEYOR; //车辆完全离开预备区后，检测2，3输送带之间的打滑情况
+                        }
                     }
                 }
                 else if(HEAD_WHEEL_SKID_IN_2_3_CONVEYOR == carWash[i].wheelSkidArea){
@@ -667,7 +669,7 @@ void conveyor_run_crl_thread(void *arg)
             }
         }
         if(1 == washCarNum && 0 == carWash[headWashCarId].headPos){ //只有一辆车洗，2#输送带在车辆进入工作区前一直启动
-            if(is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)){
+            if(is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID) && isClearConveyorEncFinish){
             // && is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)){
                 conveyor_move(CRL_SECTION_2, CMD_FORWARD);
             }
@@ -2729,6 +2731,7 @@ int step_dev_wash(uint8_t *completeId)
                         }
                         else if(RET_COMPLETE == ret){
                             carWash[i].isAllChangeBrushRotation = true;
+                            if(carWash[i].isWashCarTailFinish)  stepSta.isModuleDriverExecuted = false; //洗车尾动作提前结束时，由这里提供驱动标志
                             ret = NOR_CONTINUE;
                         }
                         if(isDriveExe)  stepSta.isModuleDriverExecuted = false;     //归还驱动标志
@@ -2755,7 +2758,7 @@ int step_dev_wash(uint8_t *completeId)
                                 }
                                 else if(SIDE_BRUSH_POS_RIGHT == sideBrushWashPos){
                                     LOG_UPLOAD("Front side brush wash car tail finish");
-                                    stepSta.isModuleDriverExecuted = false;                 //重置模型驱动（用于侧刷归位）
+                                    if(!isSideBrushCantMoveToPose)  stepSta.isModuleDriverExecuted = false; //重置模型驱动（用于侧刷归位）,无法洗车尾时，由侧刷换向那里完成后重置模型驱动
                                     carWash[i].isWashCarTailFinish = true;
                                     carWash[i].isBackBrushFinish = false;
                                     front_side_brush_rotation(CRL_BOTH, CMD_STILL);

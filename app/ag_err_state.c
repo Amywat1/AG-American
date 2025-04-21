@@ -144,7 +144,8 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     {8211,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机3变频器故障（报警不停机）
     {8212,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机4变频器故障（报警不停机）
     {8213,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机5变频器故障（报警不停机）
-    {8214,   false,      false,      0,      500,                500,                E_WARNING}, //裙边刷变频器故障（报警但延迟停机）
+    {8214,   false,      false,      0,      500,                500,                E_WARNING}, //左裙边刷变频器故障（报警但延迟停机）
+    {8215,   false,      false,      0,      500,                500,                E_WARNING}, //右裙边刷变频器故障（报警但延迟停机）
     {329,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //升降归位超时  （这里的单个超时报警只通知，处理的话有一个总的归位超时报警会处理）
     {8229,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //左前刷归位超时
     {8230,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //右前刷归位超时
@@ -155,8 +156,8 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
 
     {9001,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //前车轮在1#_2#输送带处打滑
     {9002,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //后车轮在1#_2#输送带处打滑
-    {9003,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //前车轮在2#_3#输送带处打滑
-    {9004,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //后车轮在2#_3#输送带处打滑
+    // {9003,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //前车轮在2#_3#输送带处打滑
+    // {9004,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //后车轮在2#_3#输送带处打滑
     {8140,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //车辆出口处打滑，超过规定输送距离
 };
 
@@ -533,9 +534,11 @@ static bool check_ag_error(bool isEmc){
         case 8213:   //风机5变频器故障
             isError = (!isEmc && xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_DRYER_5_ERR)) ? true : false;
             break;
-        case 8014:   //裙边刷变频器故障
-            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD5) 
-            && (osal_is_io_trigger(BOARD5_INPUT_FRONT_LEFT_SKIRT_ERR) || osal_is_io_trigger(BOARD5_INPUT_FRONT_RIGHT_SKIRT_ERR))) ? true : false;
+        case 8214:   //左裙边刷变频器故障
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD5) && osal_is_io_trigger(BOARD5_INPUT_FRONT_LEFT_SKIRT_ERR)) ? true : false;
+            break;
+        case 8215:   //右裙边刷变频器故障
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD5) && osal_is_io_trigger(BOARD5_INPUT_FRONT_RIGHT_SKIRT_ERR)) ? true : false;
             break;
         default:
             continue;
@@ -756,8 +759,9 @@ static void xp_check_error_thread(void *arg)
                         uint32_t errCode = 0xFFFFFFFF;
                         xp_lnovance_get_error_code(14, &errCode);
                         LOG_UPLOAD("SKIRT_BRUSH_LEFT err code %d", errCode);
-                        errCode = 0xFFFFFFFF;
-                        aos_msleep(10);             //临时添加
+                    }
+                    if(8215 == ErrInfo_Table[i].code){
+                        uint32_t errCode = 0xFFFFFFFF;
                         xp_lnovance_get_error_code(15, &errCode);
                         LOG_UPLOAD("SKIRT_BRUSH_RIGHT err code %d", errCode);
                     }
