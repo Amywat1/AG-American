@@ -2758,7 +2758,7 @@ int step_dev_wash(uint8_t *completeId)
                                 }
                                 else if(SIDE_BRUSH_POS_RIGHT == sideBrushWashPos){
                                     LOG_UPLOAD("Front side brush wash car tail finish");
-                                    if(!isSideBrushCantMoveToPose)  stepSta.isModuleDriverExecuted = false; //重置模型驱动（用于侧刷归位）,无法洗车尾时，由侧刷换向那里完成后重置模型驱动
+                                    stepSta.isModuleDriverExecuted = false;                 //重置模型驱动（用于侧刷归位）,无法洗车尾时，由侧刷换向那里完成后重置模型驱动
                                     carWash[i].isWashCarTailFinish = true;
                                     carWash[i].isBackBrushFinish = false;
                                     front_side_brush_rotation(CRL_BOTH, CMD_STILL);
