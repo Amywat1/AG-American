@@ -603,6 +603,8 @@ static void model_status_update_thread(void *arg)
 /* *************************************************************  订单状态  ************************************************************** */
         appModule.localSts.order1.workState = (appModule.localSts.order1.orderNumber != 0) ? get_work_state(1) : 0;
         appModule.localSts.order2.workState = (appModule.localSts.order2.orderNumber != 0) ? get_work_state(2) : 0;
+        strcpy(appModule.localSts.order1.runningProc, (appModule.localSts.order1.orderNumber != 0) ? get_work_proc_str(1) : "null");
+        strcpy(appModule.localSts.order2.runningProc, (appModule.localSts.order2.orderNumber != 0) ? get_work_proc_str(2) : "null");
 /* *************************************************************  洗车判断  ************************************************************** */
         appModule.localSts.washInfo.carAhead        = get_is_allow_next_car_wash_flag() ? false : true;
         appModule.localSts.washInfo.stopOk          = carInfo.isAllowToWash ? true : false;
@@ -2046,6 +2048,9 @@ void xp_service_thread(void* arg)
                     }
                     xp_service_set_state(STA_EXCEPTION);
                 }
+            }
+            else{                                               //急停不进行归位动作
+                xp_service_set_state(STA_EXCEPTION);
             }
             break;
 

@@ -227,9 +227,11 @@ void xp_iot_data_register_thread(void *arg)
     //1#订单
     err &= IOT_ADD_PROPERTY_NODE("sts_order_number_1",	        localModelSts->order1.orderNumber,  TYPE_Int,   0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_work_state_1",	        localModelSts->order1.workState,    TYPE_Int,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE_STR("sts_running_proc_1",	    localModelSts->order1.runningProc,  TYPE_String,0,	0);
     //2#订单
     err &= IOT_ADD_PROPERTY_NODE("sts_order_number_2",	        localModelSts->order2.orderNumber,  TYPE_Int,   0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_work_state_2",	        localModelSts->order2.workState,    TYPE_Int,	0,	0);
+    err &= IOT_ADD_PROPERTY_NODE_STR("sts_running_proc_2",	    localModelSts->order2.runningProc,  TYPE_String,0,	0);
     //洗车判断
     err &= IOT_ADD_PROPERTY_NODE("sts_offline_order",	        localModelSts->washInfo.offlineOrderNum,    TYPE_Int,0,	0);
     err &= IOT_ADD_PROPERTY_NODE("sts_complete_order",	        localModelSts->washInfo.completeOrderNum,   TYPE_Int,0,	0);

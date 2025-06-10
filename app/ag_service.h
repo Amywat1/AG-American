@@ -44,6 +44,7 @@ typedef enum{
 typedef struct{
     int                 orderNumber;
     int                 workState;
+    char                runningProc[200];
 } Type_ModelSts_Order_Def;
 
 //状态点位——洗车判断

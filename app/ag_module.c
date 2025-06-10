@@ -487,6 +487,7 @@ void vehicle_skid_detect_thread(void *arg)
 {
     bool isHeadWheelSkidIn12Conveyor = false;
     bool isAddWashHeadTime = false;
+    bool isSignalIntrudeTriggered = false;
     
     while (1)
     {
@@ -498,10 +499,11 @@ void vehicle_skid_detect_thread(void *arg)
                         carWash[i].wheelSkidTimeStamp = aos_now_ms();               //入口光电遮挡开始计时
                         carWash[i].wheelSkidArea = HEAD_WHEEL_SKID_IN_1_2_CONVEYOR;
                         isHeadWheelSkidIn12Conveyor = false;
+                        isSignalIntrudeTriggered = false;
                     }
                 }
                 else if(HEAD_WHEEL_SKID_IN_1_2_CONVEYOR == carWash[i].wheelSkidArea){
-                    if(!is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE)){
+                    if(!isSignalIntrudeTriggered && !is_signal_filter_trigger(SIGNAL_AVOID_INTRUDE)){
                         if(!carWash[i].isFrontWheelSkidIn12 && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 27000){     //超过一定时间还没遮挡防闯，认为前轮打滑
                             carWash[i].isFrontWheelSkidIn12 = true;      //前轮打滑
                             set_error_state(9001, true);
@@ -510,6 +512,7 @@ void vehicle_skid_detect_thread(void *arg)
                         }
                     }
                     else{
+                        isSignalIntrudeTriggered = true;
                         if(!isHeadWheelSkidIn12Conveyor && !carWash[i].isBackWheelSkidIn12
                         && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 43000){     //超过一定时间遮挡了防闯，但是一直没到前侧刷位置，认为后轮打滑
                             carWash[i].isBackWheelSkidIn12 = true;      //后轮打滑
@@ -2466,7 +2469,7 @@ int step_dev_wash(uint8_t *completeId)
                                 // front_side_brush_move_pos(CRL_ONLY_RIGHT, CMD_FORWARD, 30 - 5);
                                 //这里通过脉冲值判断一下之前升降有没有上升，有上升的话这里再下降（临时修复方案，这个方案基于顶刷脉冲值正常）
                                 if(recordLifterPosValue > xp_osal_get_dev_pos(LIFTER_MATCH_ID) + 10){
-                                    lifter_move_time(CMD_FORWARD, 1200);                    //这个时间不要大于侧刷移动的时间，略小于上升的时间
+                                    lifter_move_time(CMD_FORWARD, 1500);                    //这个时间不要大于侧刷移动的时间，略小于上升的时间
                                 }
                                 carWash[i].isWashCarHeadFinish = true;
                                 if(FINE_WASH == carWash[i].washMode){
@@ -3785,6 +3788,28 @@ int get_work_state(uint8_t washId)
     if(carWash[washId].headProc == PROC_START_FRONT_BRUSH && is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)) sta |= 0x0200;
     if(carWash[washId].tailProc == PROC_FINISH_FRONT_BRUSH && is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)) sta |= 0x0400;
     return sta;
+}
+
+#define WORK_PROC_STR_MAX_LEN   200
+char workProcStr[WORK_PROC_STR_MAX_LEN];
+char* get_work_proc_str(uint8_t washId)
+{
+    memset(workProcStr, 0, sizeof(workProcStr));
+    if(washId == entryCarIndex && is_signal_filter_trigger(SIGNAL_GATE_2_LEFT_OPEN) && is_signal_filter_trigger(SIGNAL_GATE_2_RIGHT_OPEN)) strcat(workProcStr, "startWash/");
+    if(carWash[washId].headPos != 0 && carWash[washId].tailProc < PROC_FINISH_HIGH_PUMP)                                        strcat(workProcStr, "highPressWater/");
+    if(carWash[washId].headProc >= PROC_START_SKIRT_BRUSH_ROTATION && carWash[washId].tailProc < PROC_FINISH_SKIRT_BRUSH)       strcat(workProcStr, "washSideSkirtF/");
+    if(carWash[washId].headProc >= PROC_START_SHAMPOO && carWash[washId].tailProc < PROC_FINISH_SHAMPOO)                        strcat(workProcStr, "forwardShampoo/");
+    if(carWash[washId].headProc >= PROC_START_TOP_BRUSH && carWash[washId].tailProc < PROC_FINISH_TOP_BRUSH)                    strcat(workProcStr, "forwardWashTop/");
+    if(carWash[washId].headProc >= PROC_START_FRONT_BRUSH && carWash[washId].tailProc < PROC_FINISH_FRONT_BRUSH)                strcat(workProcStr, "washCarBodyFB/");
+    if(carWash[washId].headProc >= PROC_START_BACK_BRUSH && carWash[washId].tailProc < PROC_FINISH_BACK_BRUSH)                  strcat(workProcStr, "washCarBodyBB/");
+    if(carWash[washId].headProc >= PROC_START_WAXWATER && carWash[washId].tailProc < PROC_FINISH_WAXWAT)                        strcat(workProcStr, "forwardWaxwater/");
+    if(carWash[washId].headProc >= PROC_START_DYRING && carWash[washId].tailProc < PROC_FINISH_DYRING)                          strcat(workProcStr, "forwardDrying/");
+    if(carWash[washId].headProc == PROC_START_FRONT_BRUSH && is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID))                         strcat(workProcStr, "washCarHead/");
+    if(carWash[washId].tailProc == PROC_FINISH_FRONT_BRUSH && is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID))                        strcat(workProcStr, "washCarTail/");
+
+    uint16_t lastNumP = strlen(workProcStr);    //去掉最后一个'/'
+    workProcStr[lastNumP - 1] = '\0';
+    return workProcStr;
 }
 
 /**
