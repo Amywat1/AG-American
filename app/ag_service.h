@@ -96,7 +96,7 @@ typedef struct{
     int                 backLeftBrushCurrent;
     int                 backRightBrushCurrent;
     bool                isOta;
-    char                version[15];
+    char                version[30];
     char                deviceModel[15];
     int                 startCnt;
     int                 completeCnt;

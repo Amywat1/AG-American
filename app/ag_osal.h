@@ -614,4 +614,5 @@ extern int osal_set_dev_limit_mode(Type_DriverIndex_Enum id, Type_LimitMode_Enum
 extern int clear_dev_encoder(Type_DriverIndex_Enum id);
 extern void osal_error_upload_callback_regist(void (*callback)(uint16_t code, bool value));
 extern void offline_payment_callback_regist(void (*callback)(uint8_t washMode));
+extern void set_side_brush_down_signal_limit(bool value);
 #endif

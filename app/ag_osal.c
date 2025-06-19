@@ -2570,6 +2570,12 @@ int osal_set_dev_limit_mode(Type_DriverIndex_Enum id, Type_LimitMode_Enum mode, 
     return -1;
 }
 
+void set_side_brush_down_signal_limit(bool value)
+{
+    // MotorDev_Table[FRONT_LEFT_MOVE_MATCH_ID].moveInfo.ioIndexLimitCW   = value ? BOARD2_INPUT_FRONT_LEFT_BRUSH_DOWN : IO_NULL;
+    // MotorDev_Table[FRONT_RIGHT_MOVE_MATCH_ID].moveInfo.ioIndexLimitCW  = value ? BOARD2_INPUT_FRONT_RIGHT_BRUSH_DOWN : IO_NULL;
+}
+
 /**
  * @brief       码盘值清零
  * @param[in]	id                  

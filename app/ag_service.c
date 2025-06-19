@@ -42,7 +42,7 @@ typedef struct {
     bool                    isDevMove[APP_CRL_NUM];
     aos_queue_t             cmdQueue;
     Type_PropertyNode_Def   cmd;                //指令
-    char                    appVersion[15];
+    char                    appVersion[30];
 } Type_AppInfo_Def;
 static Type_AppInfo_Def     appModule = {0};    //app点位信息
 

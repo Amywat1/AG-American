@@ -17,13 +17,13 @@
 #define BRUSH_CURRENT_UPDATE_THREAD_FREQ        (10)            //毛刷电流更新线程周期
 
 #define TOP_BRUSH_WARNING_CUR                   (180)           //顶刷报警电流
-#define SIDE_BRUSH_WARNING_CUR                  (200)           //侧刷报警电流
+#define SIDE_BRUSH_WARNING_CUR                  (230)           //侧刷报警电流
 #define DEV_FORCE_MOVE_TIME                     (1000)          //设备单次强制移动时间（ms）
 #define SUPPORT_WASH_NUM_MAX                    (3)             //支持的最大洗车数量
 #define ENCODER_FLIP_VALUE                      (0x00FFFFFF)    //子板码盘计数最大值（超过该值翻转清零重新计数，与子板最大计数值对应）
 #define CAR_POS_RECORD_INFO_ACCURACY            (5)             //车身位置信息记录精度（输送带位置对应的车身高度）
 #define CAR_POS_RECORD_INFO_MAX_NUM             ((CAR_MAX_LENGTH + SIGNAL_ENTRANCE_TO_TOP_BRUSH_OFFSET)/CAR_POS_RECORD_INFO_ACCURACY)    //车身位置信息的记录缓存个数
-#define TOP_BRUSH_RECORD_CUR_AREA               (5)             //顶刷记录电流的升降脉冲区域（兼容顶刷在一定高度会打到框架的结构）
+#define TOP_BRUSH_RECORD_CUR_AREA               (10)            //顶刷记录电流的升降脉冲区域（兼容顶刷在一定高度会打到框架的结构）
 #define BRUSH_CALI_READ_CNT                     (5)             //毛刷电流校准采样次数
 #define DECISION_BACKWARD_CMD_CNT               (500/BRUSH_FOLLOW_THREAD_FREQ)  //决定执行后退指令的滤波次数
 #define DECISION_FORWARD_CMD_CNT                (800/BRUSH_FOLLOW_THREAD_FREQ)  //决定执行前进指令的滤波次数
@@ -254,7 +254,7 @@ static int32_t recordLifterPos[CAR_POS_RECORD_INFO_MAX_NUM] = {0};
 
 //毛刷各状态值
 static Type_BrushInfo_Def brush[BRUSH_NUM] = {0};
-static int16_t topBrushPosCurrent[TOP_BRUSH_RECORD_CUR_AREA] = {0};
+static int16_t brushPosCurrent[BRUSH_NUM][TOP_BRUSH_RECORD_CUR_AREA] = {0};
 
 // static Type_ComSwitchSta_Enum   comSwSta[COM_SWITCH_NUMBER] = {0};  //公有开关的切换状态
 // static Type_DriverCmdInfo_Def   comSwCmd[COM_SWITCH_NUMBER] = {0};  //公有开关的驱动指令
@@ -1324,13 +1324,13 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
 {
     static Type_ModuleExeSta_Def moduleSta = {0};
     static uint8_t recordCaliCnt = 0;
-    static int32_t topBrushRecordPosNum = 0;
+    static int32_t brushRecordPosNum[BRUSH_NUM] = {0};
     static bool isStartRecord = false;
     static bool isStartCali = false;
     static int16_t currentSum[BRUSH_NUM] = {0};
     static int16_t recordCurrent[BRUSH_NUM][BRUSH_CALI_READ_CNT] = {0};
     static bool carIntrudeRecordSta = false;
-    int32_t lifterPos = 0;
+    int32_t brushPos[BRUSH_NUM] = {0};
     static uint64_t frontBrushMovetimeStamp;
 
     if(!stepSta.isModuleDriverExecuted){
@@ -1345,7 +1345,7 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
             top_brush_rotation(CMD_BACKWARD);
             water_system_control(WATER_TOP, true);
             currentSum[BRUSH_TOP] = 0;
-            topBrushRecordPosNum = 0;
+            brushRecordPosNum[BRUSH_TOP] = 0;
             break;
         case BRUSH_SIDE_FRONT:
             if(!is_signal_filter_trigger(SIGNAL_FL_MOVE_ZERO) || !is_signal_filter_trigger(SIGNAL_FR_MOVE_ZERO)){
@@ -1355,12 +1355,11 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
             front_side_brush_rotation(CRL_ONLY_LEFT, CMD_FORWARD);
             front_side_brush_rotation(CRL_ONLY_RIGHT, CMD_BACKWARD);
             water_system_control(WATER_FRONT_SIDE, true);
-            // front_side_brush_move_pos(CRL_BOTH, CMD_FORWARD, PUTTER_GO_MIDDLE_OFFSET);
-            front_side_brush_move_time(CRL_BOTH, CMD_FORWARD, isIntrude ? 800 : 5500);
             currentSum[BRUSH_FRONT_LEFT] = 0;
             currentSum[BRUSH_FRONT_RIGHT] = 0;
+            brushRecordPosNum[BRUSH_FRONT_LEFT] = 0;
+            brushRecordPosNum[BRUSH_FRONT_RIGHT] = 0;
             carIntrudeRecordSta = isIntrude;
-            frontBrushMovetimeStamp = aos_now_ms();
             break;
         case BRUSH_SIDE_BACK:
             if(!is_signal_filter_trigger(SIGNAL_BL_MOVE_ZERO) || !is_signal_filter_trigger(SIGNAL_BR_MOVE_ZERO)){
@@ -1370,10 +1369,10 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
             back_side_brush_rotation(CRL_ONLY_LEFT, CMD_FORWARD);
             back_side_brush_rotation(CRL_ONLY_RIGHT, CMD_BACKWARD);
             water_system_control(WATER_BACK_SIDE, true);
-            // back_side_brush_move_pos(CRL_BOTH, CMD_FORWARD, 30);
-            back_side_brush_move_time(CRL_BOTH, CMD_FORWARD, isIntrude ? 800 : 3500);
             currentSum[BRUSH_BACK_LEFT] = 0;
             currentSum[BRUSH_BACK_RIGHT] = 0;
+            brushRecordPosNum[BRUSH_BACK_LEFT] = 0;
+            brushRecordPosNum[BRUSH_BACK_RIGHT] = 0;
             break;
         default:
             return -1;
@@ -1404,60 +1403,93 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
         return ERR_TIMEOUT;
     }
     if(!isStartRecord){                                         //等待毛刷旋转稳定后采样电流
-        if(get_diff_ms(moduleSta.timeStamp) > 2500){
+        if(get_diff_ms(moduleSta.timeStamp) > 2000){
             isStartRecord = true;
             if(BRUSH_TOP == brushType){
                 lifter_move(CMD_FORWARD, true);
-                isStartCali = false;
             }
-            else{
-                isStartCali = true;
+            else if(BRUSH_SIDE_FRONT == brushType){
+                front_side_brush_move_time(CRL_BOTH, CMD_FORWARD, isIntrude ? 800 : 5500);
+                frontBrushMovetimeStamp = aos_now_ms();
             }
+            else if(BRUSH_SIDE_BACK == brushType){
+                back_side_brush_move_time(CRL_BOTH, CMD_FORWARD, isIntrude ? 800 : 3500);
+            }
+            isStartCali = false;
             moduleSta.timeStamp = aos_now_ms();
         }
         return NOR_CONTINUE;
     }
     else{
-        if(!isStartCali && get_diff_ms(moduleSta.timeStamp) < 2000){
-            //记录顶刷在一定高度时的电流值（顶刷在一定高度会打到结构框架，在这段区域的电流值判定需要做一定处理）AG上其实不用，兼容愿景7
-            lifterPos = xp_osal_get_dev_pos(LIFTER_MATCH_ID);
-            if(lifterPos >= 0 && lifterPos < TOP_BRUSH_RECORD_CUR_AREA){
-                topBrushPosCurrent[lifterPos] = brush[BRUSH_TOP].current;           //!!!!这里应该增加判定，current可能会读失败赋值非正常的采样值
-                //填补没有记录的数组
-                for (uint8_t i = topBrushRecordPosNum; i < lifterPos; i++)
-                {
-                    topBrushPosCurrent[i] = brush[BRUSH_TOP].current;
-                }
-                topBrushRecordPosNum = lifterPos + 1;
+        if(!isStartCali && get_diff_ms(moduleSta.timeStamp) < 2000){                    //记录离限位一定距离内的位置对应电流值，避免毛刷与结构件干涉影响电流值
+            uint8_t getNumStart;
+            uint8_t getNumEnd;
+            uint8_t recordNum;
+            if(BRUSH_TOP == brushType){
+                getNumStart = BRUSH_TOP;
+                getNumEnd = BRUSH_TOP + 1;
+                recordNum = 1;
             }
-            else{
-                //填补没有记录的数组
-                if(topBrushRecordPosNum != TOP_BRUSH_RECORD_CUR_AREA){
-                    for (uint8_t i = topBrushRecordPosNum; i < TOP_BRUSH_RECORD_CUR_AREA; i++)
-                    {
-                        topBrushPosCurrent[i] = brush[BRUSH_TOP].current;
-                    }
-                }
-                isStartCali = true;
+            else if(BRUSH_SIDE_FRONT == brushType){
+                getNumStart = BRUSH_FRONT_LEFT;
+                getNumEnd = BRUSH_FRONT_RIGHT + 1;
+                recordNum = 2;
+            }
+            else if(BRUSH_SIDE_BACK == brushType){
+                getNumStart = BRUSH_BACK_LEFT;
+                getNumEnd = BRUSH_BACK_RIGHT + 1;
+                recordNum = 2;
+            }
 
-                char *tempBuf = aos_malloc(10);
-                char *valueBuf = aos_malloc(10 * TOP_BRUSH_RECORD_CUR_AREA);
-                memset(valueBuf, 0, 10 * TOP_BRUSH_RECORD_CUR_AREA);
-                for (uint8_t i = 0; i < TOP_BRUSH_RECORD_CUR_AREA; i++)
-                {
-                    sprintf(tempBuf, "%d ", topBrushPosCurrent[i]);
-                    strcat(valueBuf, tempBuf);
+            uint8_t recordCnt = 0;
+            for (uint8_t brushNum = getNumStart; brushNum < getNumEnd; brushNum++)
+            {
+                uint16_t DriverId;
+                if(BRUSH_TOP == brushNum)               DriverId = LIFTER_MATCH_ID;
+                else if(BRUSH_FRONT_LEFT == brushNum)   DriverId = FRONT_LEFT_MOVE_MATCH_ID;
+                else if(BRUSH_FRONT_RIGHT == brushNum)  DriverId = FRONT_RIGHT_MOVE_MATCH_ID;
+                else if(BRUSH_BACK_LEFT == brushNum)    DriverId = BACK_LEFT_MOVE_MATCH_ID;
+                else if(BRUSH_BACK_RIGHT == brushNum)   DriverId = BACK_RIGHT_MOVE_MATCH_ID;
+                brushPos[brushNum] = xp_osal_get_dev_pos(DriverId);
+                if(brushPos[brushNum] >= 0 && brushPos[brushNum] < TOP_BRUSH_RECORD_CUR_AREA){
+                    brushPosCurrent[brushNum][brushPos[brushNum]] = brush[brushNum].current;
+                    //填补没有记录的数组
+                    for (uint8_t i = brushRecordPosNum[brushNum]; i < brushPos[brushNum]; i++)
+                    {
+                        brushPosCurrent[brushNum][i] = brush[brushNum].current;
+                    }
+                    brushRecordPosNum[brushNum] = brushPos[brushNum] + 1;
                 }
-                LOG_DEBUG("Record lifter pos current %s", valueBuf);
-                aos_free(tempBuf);
-                aos_free(valueBuf);
+                else{
+                    recordCnt++;
+                    //填补没有记录的数组
+                    if(brushRecordPosNum[brushNum] != TOP_BRUSH_RECORD_CUR_AREA){
+                        for (uint8_t i = brushRecordPosNum[brushNum]; i < TOP_BRUSH_RECORD_CUR_AREA; i++)
+                        {
+                            brushPosCurrent[brushNum][i] = brush[brushNum].current;
+                        }
+                    }
+
+                    char *tempBuf = aos_malloc(10);
+                    char *valueBuf = aos_malloc(20 + 10 * TOP_BRUSH_RECORD_CUR_AREA);
+                    memset(valueBuf, 0, 20 + 10 * TOP_BRUSH_RECORD_CUR_AREA);
+                    for (uint8_t i = 0; i < TOP_BRUSH_RECORD_CUR_AREA; i++)
+                    {
+                        sprintf(tempBuf, "%d ", brushPosCurrent[brushNum][i]);
+                        strcat(valueBuf, tempBuf);
+                    }
+                    LOG_UPLOAD("%d brush pos current %s", brushNum, valueBuf);
+                    aos_free(tempBuf);
+                    aos_free(valueBuf);
+                }
             }
+            if(recordCnt == recordNum) isStartCali = true;
         }
         else{
             if(!isStartCali){
                 isStartCali = true;
-                //顶刷脉冲可能错误的情况下，这里需要做处理，避免后面跟随时用到错误的值
-                LOG_UPLOAD("Lifter encoder maybe error, no recorder brush top pos current");
+                //脉冲可能错误的情况下，这里需要做处理，避免后面跟随时用到错误的值
+                LOG_UPLOAD("%d encoder maybe error, no record brush pos current", brushType);
             }
             if(recordCaliCnt < BRUSH_CALI_READ_CNT){
                 if(get_diff_ms(moduleSta.timeStamp) > 300){
@@ -1493,7 +1525,7 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
                         sprintf(bufTemp, "%d ", recordCurrent[BRUSH_TOP][i]);
                         strcat(bufValue, bufTemp);
                     }
-                    LOG_DEBUG("Top base current %d, ===Record current %s", brush[BRUSH_TOP].baseCurrent, bufValue);
+                    LOG_UPLOAD("Top base current %d, ===Record current %s", brush[BRUSH_TOP].baseCurrent, bufValue);
                     //顶刷控制参数
                     brush[BRUSH_TOP].pressTouchcar  = brush[BRUSH_TOP].baseCurrent  + 8;
                     brush[BRUSH_TOP].pressL         = brush[BRUSH_TOP].baseCurrent  + 13;      //自由跟随状态下，阈值下限值正常，使吃毛深度合适
@@ -1509,7 +1541,7 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
                         sprintf(bufTemp, "%d ", recordCurrent[BRUSH_FRONT_LEFT][i]);
                         strcat(bufValue, bufTemp);
                     }
-                    LOG_DEBUG("Front left base current %d, ===Record current %s", brush[BRUSH_FRONT_LEFT].baseCurrent, bufValue);
+                    LOG_UPLOAD("Front left base current %d, ===Record current %s", brush[BRUSH_FRONT_LEFT].baseCurrent, bufValue);
                     //左前刷控制参数
                     brush[BRUSH_FRONT_LEFT].pressTouchcar   = brush[BRUSH_FRONT_LEFT].baseCurrent  + 10;
                     brush[BRUSH_FRONT_LEFT].pressL_NoBW     = brush[BRUSH_FRONT_LEFT].baseCurrent  + 10;
@@ -1525,7 +1557,7 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
                         sprintf(bufTemp, "%d ", recordCurrent[BRUSH_FRONT_RIGHT][i]);
                         strcat(bufValue, bufTemp);
                     }
-                    LOG_DEBUG("Front right base current %d, ===Record current %s", brush[BRUSH_FRONT_RIGHT].baseCurrent, bufValue);
+                    LOG_UPLOAD("Front right base current %d, ===Record current %s", brush[BRUSH_FRONT_RIGHT].baseCurrent, bufValue);
                     //右前刷控制参数
                     brush[BRUSH_FRONT_RIGHT].pressTouchcar  = brush[BRUSH_FRONT_RIGHT].baseCurrent + 10;
                     brush[BRUSH_FRONT_RIGHT].pressL_NoBW    = brush[BRUSH_FRONT_RIGHT].baseCurrent + 10;
@@ -1541,7 +1573,7 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
                         sprintf(bufTemp, "%d ", recordCurrent[BRUSH_BACK_LEFT][i]);
                         strcat(bufValue, bufTemp);
                     }
-                    LOG_DEBUG("Back left base current %d, ===Record current %s", brush[BRUSH_BACK_LEFT].baseCurrent, bufValue);
+                    LOG_UPLOAD("Back left base current %d, ===Record current %s", brush[BRUSH_BACK_LEFT].baseCurrent, bufValue);
                     //左后刷控制参数
                     brush[BRUSH_BACK_LEFT].pressTouchcar    = brush[BRUSH_BACK_LEFT].baseCurrent  + 10;
                     brush[BRUSH_BACK_LEFT].pressL_NoBW      = brush[BRUSH_BACK_LEFT].baseCurrent  + 10;
@@ -1557,7 +1589,7 @@ static int module_brush_current_calibrate(Type_BrushType_Enum brushType, bool is
                         sprintf(bufTemp, "%d ", recordCurrent[BRUSH_BACK_RIGHT][i]);
                         strcat(bufValue, bufTemp);
                     }
-                    LOG_DEBUG("Back right base current %d, ===Record current %s", brush[BRUSH_BACK_RIGHT].baseCurrent, bufValue);
+                    LOG_UPLOAD("Back right base current %d, ===Record current %s", brush[BRUSH_BACK_RIGHT].baseCurrent, bufValue);
                     //右后刷控制参数
                     brush[BRUSH_BACK_RIGHT].pressTouchcar   = brush[BRUSH_BACK_RIGHT].baseCurrent + 10;
                     brush[BRUSH_BACK_RIGHT].pressL_NoBW     = brush[BRUSH_BACK_RIGHT].baseCurrent + 10;
@@ -2913,6 +2945,7 @@ void side_brush_follow_thread(void *arg)
                 osal_set_dev_limit_mode(FRONT_LEFT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, PUTTER_GO_ANOTHER_SIDE_OFFSET);
                 osal_set_dev_limit_mode(FRONT_RIGHT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, PUTTER_GO_ANOTHER_SIDE_OFFSET);
                 isFrontBrushFollow = false;
+                set_side_brush_down_signal_limit(false);
             }
             isForbidGantryRecover = false;
             aos_msleep(300);
@@ -2953,6 +2986,7 @@ void side_brush_follow_thread(void *arg)
             if(brush[BRUSH_FRONT_LEFT].runMode != BRUSH_MANUAL && brush[BRUSH_FRONT_RIGHT].runMode != BRUSH_MANUAL){
                 if(!isFrontBrushFollow){
                     isFrontBrushFollow = true;
+                    set_side_brush_down_signal_limit(true);
                     osal_set_dev_limit_mode(FRONT_LEFT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, PUTTER_FOLLOW_MAX_OFFSET);
                     osal_set_dev_limit_mode(FRONT_RIGHT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, PUTTER_FOLLOW_MAX_OFFSET);
                 }
@@ -2960,6 +2994,7 @@ void side_brush_follow_thread(void *arg)
             else{
                 if(isFrontBrushFollow){
                     isFrontBrushFollow = false;
+                    set_side_brush_down_signal_limit(false);
                     osal_set_dev_limit_mode(FRONT_LEFT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, PUTTER_GO_ANOTHER_SIDE_OFFSET);
                     osal_set_dev_limit_mode(FRONT_RIGHT_MOVE_MATCH_ID, MODE_SOFT_LIMIT_MAX, 0, PUTTER_GO_ANOTHER_SIDE_OFFSET);
                 }
@@ -2981,16 +3016,18 @@ void side_brush_follow_thread(void *arg)
             for (uint8_t i = 0; i < BRUSH_NUM; i++)
             {
                 if(BRUSH_MANUAL == brush[i].runMode)    continue;
+                
+                int16_t brushPos = TOP_BRUSH_RECORD_CUR_AREA;
+                if(BRUSH_TOP == i)              brushPos = xp_osal_get_dev_pos(LIFTER_MATCH_ID);
+                else if(BRUSH_FRONT_LEFT == i)  brushPos = xp_osal_get_dev_pos(FRONT_LEFT_MOVE_MATCH_ID);
+                else if(BRUSH_FRONT_RIGHT == i) brushPos = xp_osal_get_dev_pos(FRONT_RIGHT_MOVE_MATCH_ID);
+                else if(BRUSH_BACK_LEFT == i)   brushPos = xp_osal_get_dev_pos(BACK_LEFT_MOVE_MATCH_ID);
+                else if(BRUSH_BACK_RIGHT == i)  brushPos = xp_osal_get_dev_pos(BACK_RIGHT_MOVE_MATCH_ID);
                 switch (i)
                 {
                 case BRUSH_TOP:
                     brushCurrent_L   = (BRUSH_FOLLOW_NO_BACKWARD == brush[i].runMode) ? brush[i].pressL_NoBW : brush[i].pressL;
                     brushCurrent_H   = (BRUSH_FOLLOW_NO_FORWARD == brush[i].runMode) ? brush[i].pressH_NoFW : brush[i].pressH;
-                    // //顶刷高度较高时，电流上下限值需增加毛刷打到结构件的偏移电流值
-                    // if(lifterPos < TOP_BRUSH_RECORD_CUR_AREA){                   //！！！这里lifterPos需要做下范围判定，因为可能超出数组的范围
-                    //     brushCurrent_L += (topBrushPosCurrent[lifterPos] - brush[i].baseCurrent);
-                    //     brushCurrent_H += (topBrushPosCurrent[lifterPos] - brush[i].baseCurrent);
-                    // }
                     break;
                 case BRUSH_FRONT_LEFT:
                 case BRUSH_FRONT_RIGHT:
@@ -3012,6 +3049,11 @@ void side_brush_follow_thread(void *arg)
                     break;
                 default:
                     break;
+                }
+
+                if(brushPos < TOP_BRUSH_RECORD_CUR_AREA){
+                    if(brushPosCurrent[i][brushPos] > brush[i].baseCurrent) brushCurrent_L += (brushPosCurrent[i][brushPos] - brush[i].baseCurrent);
+                    if(brushPosCurrent[i][brushPos] > brush[i].baseCurrent) brushCurrent_H += (brushPosCurrent[i][brushPos] - brush[i].baseCurrent);
                 }
 
                 if(brush[i].current > brushCurrent_H
