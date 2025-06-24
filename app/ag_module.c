@@ -2308,6 +2308,10 @@ int step_dev_wash(uint8_t *completeId)
                         //刷新车头位置（有可能打滑，导致后面比如后侧刷在车没到的时候就开始合了。提前到的不管，后面的机构晚一点动作没什么风险）
                         if(carWash[i].headOffsetPos > washProcPos.startFrontBrush){
                             carWash[i].headPos += (carWash[i].headOffsetPos - washProcPos.startFrontBrush + 25);//25为毛刷深度补偿值
+                            //超短车（或者进入退出的车辆），没有监测到闯入时，如果车头流程在等前侧刷监测到车头，车尾流程有可能会跑到车头流程前面去，导致一些流程没法结束
+                            if(carWash[i].tailPos != 0 && carWash[i].headPos >= carWash[i].tailPos){
+                                carWash[i].tailPos = carWash[i].headPos + CAR_MIN_LENGTH/2;
+                            }
                         }
                         LOG_UPLOAD("Car Index %d change proc to %d, head offset pos %d, reflash head pos to %d", 
                         i, carWash[i].headProc, carWash[i].headOffsetPos, carWash[i].headPos);
@@ -2574,6 +2578,12 @@ int step_dev_wash(uint8_t *completeId)
                 //输送带码盘只会正转，不溢出的情况下，数值只增不减，因为每次有车进入工作区，码盘值都会清零，所以不会溢出
                 // carWash[i].tailMoveValue 为车尾位置相对于码盘清零时的位置移动距离值
                 carWash[i].tailOffsetPos = workAreaConveyorEnc + carWash[i].tailMoveValue - carWash[i].tailPos; //车尾相对于入口光电偏移的距离
+                
+                if(carWash[i].tailOffsetPos >= carWash[i].headOffsetPos - 100){      //监测到车辆过短，则报警退出
+                    LOG_UPLOAD("Car pos info err, offset pos head %d, tail %d", carWash[i].headOffsetPos, carWash[i].tailOffsetPos);
+                    set_error_state(9000, true);
+                    return ERR_ALARM;
+                }
 
                 if(0 == printCnt % 30){
                     LOG_UPLOAD("Car Index %d relative tail entry pos %d", i, carWash[i].tailOffsetPos);

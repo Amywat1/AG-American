@@ -1734,28 +1734,26 @@ void xp_service_thread(void* arg)
         //确认按键（仅手动模式下有效）
         if(appModule.localCmd.func.enableManualMode) check_button();
         //识别当前是否可以启动新订单车辆
-        if(get_is_allow_next_car_wash_flag()){
-            if(carInfo.isAllowToWash && wash.orderQueue[0].numberId != 0){  //车辆停车位置准确后等待一段时间后启动
-                // if(wash.orderQueue[0].isOnlineOrder){   //线上订单等待用户点击启动后开始洗车
-                //     if(wash.isGetStartCmd){
-                //         startWashFlag = true;
-                //     }
-                // }
-                // else{
-                    if(!isCarBeReady){
-                        isCarBeReady = true;
-                        carBeReadyTimeStamp = aos_now_ms();
-                    }
-                    else if(get_diff_ms(carBeReadyTimeStamp) > 4000){
-                        startWashFlag = true;
-                    }
-                // }
-            }
-            else{
-                isCarBeReady = false;
-                startWashFlag = false;
-                wash.isGetStartCmd = false;
-            }
+        if(carInfo.isAllowToWash && wash.orderQueue[0].numberId != 0){  //车辆停车位置准确后等待一段时间后启动
+            // if(wash.orderQueue[0].isOnlineOrder){   //线上订单等待用户点击启动后开始洗车
+            //     if(wash.isGetStartCmd){
+            //         startWashFlag = true;
+            //     }
+            // }
+            // else{
+                if(!isCarBeReady){
+                    isCarBeReady = true;
+                    carBeReadyTimeStamp = aos_now_ms();
+                }
+                else if(get_is_allow_next_car_wash_flag() && get_diff_ms(carBeReadyTimeStamp) > 4000){
+                    startWashFlag = true;
+                }
+            // }
+        }
+        else{
+            isCarBeReady = false;
+            startWashFlag = false;
+            wash.isGetStartCmd = false;
         }
         //有车结束出口显示绿灯，离开完成光电后红灯
         if(STA_IDLE == wash.state || STA_RUN == wash.state){
