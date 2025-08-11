@@ -2092,7 +2092,7 @@ int step_dev_wash(uint8_t *completeId)
 
     //防追尾判定
     bool isTriggerRearEndProtect = false;
-    if(carWash[entryCarIndex].headProc >= PROC_START_FRONT_BRUSH){
+    if(carWash[entryCarIndex].headProc >= PROC_START_FRONT_BRUSH && carWash[entryCarIndex].isFrontBrushWashBody){
         if(washCarNum > 1){                                             //如果有多辆车在服务中
             if(is_signal_filter_trigger(SIGNAL_EXIT)){
                 if(is_signal_filter_trigger(SIGNAL_REAR_END_PROTECT)){
@@ -2115,10 +2115,12 @@ int step_dev_wash(uint8_t *completeId)
     
     if(isTriggerRearEndProtect){
         carProtectTimeStamp = aos_now_ms();
-        if(!isRearEndProtect){
-            isRearEndProtect = true;
-            isRearEndProtectStop = (is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)) ? false : true;  //如果当前本来就没动，后面就不做恢复
+        isRearEndProtect = true;
+        if(!is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID)){
+            conveyor_move(CRL_SECTION_2, CMD_STILL);
+            isRearEndProtectStop = true;
         }
+
         if(!is_dev_move_sta_idle(CONVEYOR_2_MATCH_ID))  conveyor_move(CRL_SECTION_2, CMD_STILL);
         if(voiceCnt < 5 && get_diff_ms(voiceTimeStamp) > 8000){
             voiceCnt++;

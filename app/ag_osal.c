@@ -40,6 +40,7 @@ static bool boardIoOutSta[4] = {1,1,1,1};
 static bool isPumpWorking = false;
 
 aos_mutex_t rs485_1_mux;
+aos_mutex_t motorRunMutex;
 
 //设备驱动类型
 typedef enum {
@@ -2020,250 +2021,253 @@ void xp_osal_dev_run_thread(void* arg)
         MotorDev_Table[i].moveInfo.limitTouchedCnt = 0xFF;
     }
 
+    aos_mutex_new(&motorRunMutex);
     while (1)
     {
-        for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
-        {
-            pMotor = &MotorDev_Table[i];
-            if(NULL == pMotor){
-                LOG_UPLOAD("pMotor is NULL");
-                continue;
-            }
-            
-            //旋转结构不参与状态机，只做速度变更，不做其它判断
-            if(ACTION_TYPE_ROTATION == pMotor->actionType){
-                if (pMotor->lastVel != pMotor->tarVel){
-                    if (0 == xp_dev_motor_run(pMotor)) {
-                        pMotor->lastVel = pMotor->tarVel;
-                        LOG_UPLOAD("%s ROTATION velocity change to %d", xp_get_device_str(i), pMotor->tarVel);
-                    }
+        if(0 == aos_mutex_lock(&motorRunMutex, 50)){
+            for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
+            {
+                pMotor = &MotorDev_Table[i];
+                if(NULL == pMotor){
+                    LOG_UPLOAD("pMotor is NULL");
+                    continue;
                 }
-                continue;
-            }
-
-            bool isMoveOverTime = false;
-            int  moveOverTimeVel = 0;
-
-            //状态轮询
-            if(MOTOR_STA_IDLE == pMotor->moveInfo.state){
-                pauseTime = 0;
-            }
-            else if(MOTOR_STA_MOVE == pMotor->moveInfo.state){
-                if (is_dev_limit_touched_filter(pMotor) || 0 == pMotor->tarVel) {
-                    if(0 != pMotor->tarVel){
-                        LOG_UPLOAD("%s -MOVE- touch limit, stop move", xp_get_device_str(i));
-                    }
-                    xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);        //在速度方向上的限位触发后或设置速度为0进入停止模式
-                }
-                else if (pMotor->moveInfo.actionOverTime < MOVE_FOREVER 
-                        && get_diff_ms(pMotor->moveInfo.timeStamp) > (pMotor->moveInfo.actionOverTime + pauseTime)) {
-                    LOG_UPLOAD("%s -MOVE- over time, stop move", xp_get_device_str(i));
-                    xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
-                    isMoveOverTime = true;
-                    moveOverTimeVel = pMotor->tarVel;
-                }
-                else if (pMotor->lastVel != pMotor->tarVel) {       //仅当在命令发生变化后才对驱动器发出命令
-                    if (0 == xp_dev_motor_run(pMotor)) {
-                        pMotor->lastVel = pMotor->tarVel;
-                        LOG_UPLOAD("%s -MOVE- velocity change to %d", xp_get_device_str(i), pMotor->tarVel);
-                    }
-                }
-            }
-            else if(MOTOR_STA_MOVE_FORE == pMotor->moveInfo.state){
-                if (get_diff_ms(pMotor->moveInfo.timeStamp) > pMotor->moveInfo.forceMoveTime || 0 == pMotor->tarVel) {
-                    if(0 != pMotor->tarVel){
-                        LOG_UPLOAD("%s -FORCE MOVE- time out, stop move", xp_get_device_str(i));
-                    }
-                    xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
-                }
-                else if (get_diff_ms(pMotor->moveInfo.timeStamp) > (pMotor->moveInfo.actionOverTime + pauseTime)) {
-                    LOG_UPLOAD("%s -FORCE MOVE- over time, stop move", xp_get_device_str(i));
-                    xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
-                    isMoveOverTime = true;
-                    moveOverTimeVel = pMotor->tarVel;
-                }
-                else if (pMotor->lastVel != pMotor->tarVel) {       //仅当在命令发生变化后才对驱动器发出命令
-                    if (0 == xp_dev_motor_run(pMotor)) {
-                        pMotor->lastVel = pMotor->tarVel;
-                        LOG_UPLOAD("%s -FORCE MOVE- velocity change to %d", xp_get_device_str(i), pMotor->tarVel);
-                    }
-                }
-            }
-            else if(MOTOR_STA_MOVE_POS == pMotor->moveInfo.state){
-                devPos = xp_osal_get_dev_pos(pMotor->drvIndex);
-                if(0 == pMotor->tarVel){
-                    LOG_UPLOAD("%s -MOVE POS- vel stop", xp_get_device_str(i));
-                    xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
-                }
-                else if(is_dev_limit_touched_filter(pMotor)){
-                    //触碰到限位发现位置没到位，则不停止（因为位置脉冲值计数和清零是由子板判定的，主板检测限位触发较灵敏，可能存在主板检测到限位了（实际是干扰信号），
-                    //但子板因为滤波时间较长，未把脉冲值清零，这种情况还能避免电机没到位置误停）
-                    if(0 == pMotor->retryCnt
-                    || (pMotor->tarVel > 0 && devPos >= pMotor->moveInfo.tarPos - MOVE_POS_ERR)
-                    || (pMotor->tarVel < 0 && devPos <= pMotor->moveInfo.tarPos + MOVE_POS_ERR)){
-                        xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
-                        LOG_UPLOAD("%s -MOVE POS- touch limit, retry remain cnt %d", xp_get_device_str(i), pMotor->retryCnt);
-                    }
-                    if(pMotor->retryCnt)    pMotor->retryCnt--;
-                }
-                else if (get_diff_ms(pMotor->moveInfo.timeStamp) > (pMotor->moveInfo.actionOverTime + pauseTime)) {
-                    LOG_UPLOAD("%s -MOVE POS- over time, stop move", xp_get_device_str(i));
-                    xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
-                    isMoveOverTime = true;
-                    moveOverTimeVel = pMotor->tarVel;
-                }
-                else if (pMotor->lastVel != pMotor->tarVel) {       //仅当在命令发生变化后才对驱动器发出命令
-                    if (0 == xp_dev_motor_run(pMotor)) {
-                        pMotor->lastVel = pMotor->tarVel;
-                        LOG_UPLOAD("%s -MOVE POS- velocity change to %d", xp_get_device_str(i), pMotor->tarVel);
-                    }
-                }
-                else {
-                    if(pMotor->tarVel > 0 && devPos >= pMotor->moveInfo.tarPos){
-                        LOG_DEBUG("%s -MOVE POS- %d done, now pos %d", xp_get_device_str(i), pMotor->moveInfo.tarPos, devPos);
-                        xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
-                    }
-                    else if(pMotor->tarVel < 0 && devPos <= pMotor->moveInfo.tarPos){
-                        LOG_DEBUG("%s -MOVE POS- %d done, now pos %d", xp_get_device_str(i), pMotor->moveInfo.tarPos, devPos);
-                        xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
-                    }
-                }
-            }
-            else if(MOTOR_STA_MOVE_TIME == pMotor->moveInfo.state){
-                if (is_dev_limit_touched_filter(pMotor) || 0 == pMotor->tarVel) {
-                    if(0 != pMotor->tarVel){
-                        LOG_UPLOAD("%s -MOVE TIME- touch limit, stop move", xp_get_device_str(i));
-                    }
-                    xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
-                }
-                else if (get_diff_ms(pMotor->moveInfo.timeStamp) > pMotor->moveInfo.moveTime) {
-                    if(0 != pMotor->tarVel){
-                        LOG_UPLOAD("%s -MOVE TIME- time out, stop move", xp_get_device_str(i));
-                    }
-                    xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
-                }
-                else if (get_diff_ms(pMotor->moveInfo.timeStamp) > (pMotor->moveInfo.actionOverTime + pauseTime)) {
-                    LOG_UPLOAD("%s -MOVE TIME- over time, stop move", xp_get_device_str(i));
-                    xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
-                    isMoveOverTime = true;
-                    moveOverTimeVel = pMotor->tarVel;
-                }
-                else if (pMotor->lastVel != pMotor->tarVel) {       //仅当在命令发生变化后才对驱动器发出命令
-                    if (0 == xp_dev_motor_run(pMotor)) {
-                        pMotor->lastVel = pMotor->tarVel;
-                        LOG_UPLOAD("%s -MOVE TIME- velocity change to %d", xp_get_device_str(i), pMotor->tarVel);
-                    }
-                }
-            }
-            else if(MOTOR_STA_PAUSE == pMotor->moveInfo.state){
-                if (pMotor->moveInfo.isFirstSwitch) {
-                    pMotor->lastVel = pMotor->tarVel;
-                    pMotor->tarVel = 0;
-                    if (0 == xp_dev_motor_run(pMotor)) {
-                        pMotor->moveInfo.isFirstSwitch = false;
-                        pauseStartStamp = aos_now_ms();
-                    }
-                    else{
-                        LOG_UPLOAD("Motor pause failed");
-                    }
-                }
-                else {
-                    pauseTime = get_diff_ms(pauseStartStamp);
-                }
-            }
-            else if(MOTOR_STA_RESUME == pMotor->moveInfo.state){
-                pMotor->tarVel = pMotor->lastVel;
-                xp_osal_motor_state_set(pMotor, pMotor->moveInfo.lastState);
-            }
-            else if(MOTOR_STA_FAULT == pMotor->moveInfo.state){
-                //
-            }
-            //切换到stop状态立即执行
-            if(MOTOR_STA_STOP == pMotor->moveInfo.state){
-                pMotor->tarVel = 0;
-                if (0 == xp_dev_motor_run(pMotor)) {
-                    pMotor->lastVel = 0;
-                    xp_osal_motor_state_set(pMotor, MOTOR_STA_IDLE);
-                    LOG_DEBUG("%s stop success", xp_get_device_str(i));
-                }
-                else{
-                    LOG_UPLOAD("%s change stop err", xp_get_device_str(i));
-                }
-            }
-
-            //无脉冲计数的电机跳过后面的判定
-            if(ACTION_TYPE_ROTATION == pMotor->actionType || pMotor->moveInfo.haveEncode == false){
-                continue;
-            }
-            if(CONVEYOR_1_MATCH_ID == pMotor->drvIndex) continue;       //用不到1号输送带脉冲，不检测
-            devPos = xp_osal_get_dev_pos(pMotor->drvIndex);
-            /* 码盘计数异常检测（电机在运动过程中多次检测码盘值无变化或非运动状态下多次检测码盘值变化，认为异常） */
-            if(MOTOR_STA_MOVE == pMotor->moveInfo.state || MOTOR_STA_MOVE_FORE == pMotor->moveInfo.state 
-            || MOTOR_STA_MOVE_POS == pMotor->moveInfo.state || MOTOR_STA_MOVE_TIME == pMotor->moveInfo.state){
-                if(!encSta.isMoveSta[i]){          //运动状态改变，清除错误计数，避免切换过程中误计
-                    encSta.errCnt[i] = 0;
-                    encSta.isMoveSta[i] = true;
-                }
-            }
-            else{
-                if(encSta.isMoveSta[i]){
-                    encSta.errCnt[i] = 0;
-                    encSta.isMoveSta[i] = false;
-                }
-            }
-            //龙门15Hz 4s走24个脉冲，167ms走一个脉冲，判定周期大于这个值，保证移动状态下，每次判定脉冲值都有变化
-            if(devPos != NULL_ENCODER && get_diff_ms(encSta.checkTimeStamp[i]) > 400){
-                encSta.checkTimeStamp[i] = aos_now_ms();
-                if(MOTOR_STA_MOVE == pMotor->moveInfo.state || MOTOR_STA_MOVE_FORE == pMotor->moveInfo.state 
-                || MOTOR_STA_MOVE_POS == pMotor->moveInfo.state || MOTOR_STA_MOVE_TIME == pMotor->moveInfo.state){
-                    (lastDevPos[i] == devPos) ? encSta.errCnt[i]++ : (encSta.errCnt[i] = 0);
-                }
-                else{
-                    (lastDevPos[i] != devPos) ? encSta.errCnt[i]++ : (encSta.errCnt[i] = 0);
-                }
-                if(encSta.errCnt[i] > 10){
-                    encSta.errCnt[i] = 0;
-                    xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
-                    if(osal_error_upload != NULL){
-                        switch (pMotor->drvIndex)
-                        {
-                        case CONVEYOR_1_MATCH_ID:       osal_error_upload(8112, true);  break;
-                        case CONVEYOR_2_MATCH_ID:       osal_error_upload(8113, true);  break;
-                        case CONVEYOR_3_MATCH_ID:       osal_error_upload(8114, true);  break;
-                        case LIFTER_MATCH_ID:           osal_error_upload(300, true);   break;
-                        case FRONT_LEFT_MOVE_MATCH_ID:  osal_error_upload(310, true);   break;
-                        case FRONT_RIGHT_MOVE_MATCH_ID: osal_error_upload(311, true);   break;
-                        case BACK_LEFT_MOVE_MATCH_ID:   osal_error_upload(312, true);   break;
-                        case BACK_RIGHT_MOVE_MATCH_ID:  osal_error_upload(313, true);   break;
-                        default:
-                            break;
+                
+                //旋转结构不参与状态机，只做速度变更，不做其它判断
+                if(ACTION_TYPE_ROTATION == pMotor->actionType){
+                    if (pMotor->lastVel != pMotor->tarVel){
+                        if (0 == xp_dev_motor_run(pMotor)) {
+                            pMotor->lastVel = pMotor->tarVel;
+                            LOG_UPLOAD("%s ROTATION velocity change to %d", xp_get_device_str(i), pMotor->tarVel);
                         }
                     }
-                    LOG_UPLOAD("%s encoder err, dev state %d, dev pos %d", xp_get_device_str(i), pMotor->moveInfo.state, devPos);
+                    continue;
                 }
-                lastDevPos[i] = devPos;
-            }
-            //动作超时异常判定
-            if(osal_error_upload != NULL && isMoveOverTime){
-                if(LIFTER_MATCH_ID == pMotor->drvIndex){
-                    if(moveOverTimeVel > 0)      osal_error_upload(8031, true);
-                    else if(moveOverTimeVel < 0) osal_error_upload(8030, true);
+
+                bool isMoveOverTime = false;
+                int  moveOverTimeVel = 0;
+
+                //状态轮询
+                if(MOTOR_STA_IDLE == pMotor->moveInfo.state){
+                    pauseTime = 0;
                 }
-                else if(FRONT_LEFT_MOVE_MATCH_ID == pMotor->drvIndex){
-                    if(moveOverTimeVel < 0)      osal_error_upload(8032, true);
+                else if(MOTOR_STA_MOVE == pMotor->moveInfo.state){
+                    if (is_dev_limit_touched_filter(pMotor) || 0 == pMotor->tarVel) {
+                        if(0 != pMotor->tarVel){
+                            LOG_UPLOAD("%s -MOVE- touch limit, stop move", xp_get_device_str(i));
+                        }
+                        xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);        //在速度方向上的限位触发后或设置速度为0进入停止模式
+                    }
+                    else if (pMotor->moveInfo.actionOverTime < MOVE_FOREVER 
+                            && get_diff_ms(pMotor->moveInfo.timeStamp) > (pMotor->moveInfo.actionOverTime + pauseTime)) {
+                        LOG_UPLOAD("%s -MOVE- over time, stop move", xp_get_device_str(i));
+                        xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
+                        isMoveOverTime = true;
+                        moveOverTimeVel = pMotor->tarVel;
+                    }
+                    else if (pMotor->lastVel != pMotor->tarVel) {       //仅当在命令发生变化后才对驱动器发出命令
+                        if (0 == xp_dev_motor_run(pMotor)) {
+                            pMotor->lastVel = pMotor->tarVel;
+                            LOG_UPLOAD("%s -MOVE- velocity change to %d", xp_get_device_str(i), pMotor->tarVel);
+                        }
+                    }
                 }
-                else if(FRONT_RIGHT_MOVE_MATCH_ID == pMotor->drvIndex){
-                    if(moveOverTimeVel < 0)      osal_error_upload(8033, true);
+                else if(MOTOR_STA_MOVE_FORE == pMotor->moveInfo.state){
+                    if (get_diff_ms(pMotor->moveInfo.timeStamp) > pMotor->moveInfo.forceMoveTime || 0 == pMotor->tarVel) {
+                        if(0 != pMotor->tarVel){
+                            LOG_UPLOAD("%s -FORCE MOVE- time out, stop move", xp_get_device_str(i));
+                        }
+                        xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
+                    }
+                    else if (get_diff_ms(pMotor->moveInfo.timeStamp) > (pMotor->moveInfo.actionOverTime + pauseTime)) {
+                        LOG_UPLOAD("%s -FORCE MOVE- over time, stop move", xp_get_device_str(i));
+                        xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
+                        isMoveOverTime = true;
+                        moveOverTimeVel = pMotor->tarVel;
+                    }
+                    else if (pMotor->lastVel != pMotor->tarVel) {       //仅当在命令发生变化后才对驱动器发出命令
+                        if (0 == xp_dev_motor_run(pMotor)) {
+                            pMotor->lastVel = pMotor->tarVel;
+                            LOG_UPLOAD("%s -FORCE MOVE- velocity change to %d", xp_get_device_str(i), pMotor->tarVel);
+                        }
+                    }
                 }
-                else if(BACK_LEFT_MOVE_MATCH_ID == pMotor->drvIndex){
-                    if(moveOverTimeVel < 0)      osal_error_upload(8034, true);
+                else if(MOTOR_STA_MOVE_POS == pMotor->moveInfo.state){
+                    devPos = xp_osal_get_dev_pos(pMotor->drvIndex);
+                    if(0 == pMotor->tarVel){
+                        LOG_UPLOAD("%s -MOVE POS- vel stop", xp_get_device_str(i));
+                        xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
+                    }
+                    else if(is_dev_limit_touched_filter(pMotor)){
+                        //触碰到限位发现位置没到位，则不停止（因为位置脉冲值计数和清零是由子板判定的，主板检测限位触发较灵敏，可能存在主板检测到限位了（实际是干扰信号），
+                        //但子板因为滤波时间较长，未把脉冲值清零，这种情况还能避免电机没到位置误停）
+                        if(0 == pMotor->retryCnt
+                        || (pMotor->tarVel > 0 && devPos >= pMotor->moveInfo.tarPos - MOVE_POS_ERR)
+                        || (pMotor->tarVel < 0 && devPos <= pMotor->moveInfo.tarPos + MOVE_POS_ERR)){
+                            xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
+                            LOG_UPLOAD("%s -MOVE POS- touch limit, retry remain cnt %d", xp_get_device_str(i), pMotor->retryCnt);
+                        }
+                        if(pMotor->retryCnt)    pMotor->retryCnt--;
+                    }
+                    else if (get_diff_ms(pMotor->moveInfo.timeStamp) > (pMotor->moveInfo.actionOverTime + pauseTime)) {
+                        LOG_UPLOAD("%s -MOVE POS- over time, stop move", xp_get_device_str(i));
+                        xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
+                        isMoveOverTime = true;
+                        moveOverTimeVel = pMotor->tarVel;
+                    }
+                    else if (pMotor->lastVel != pMotor->tarVel) {       //仅当在命令发生变化后才对驱动器发出命令
+                        if (0 == xp_dev_motor_run(pMotor)) {
+                            pMotor->lastVel = pMotor->tarVel;
+                            LOG_UPLOAD("%s -MOVE POS- velocity change to %d", xp_get_device_str(i), pMotor->tarVel);
+                        }
+                    }
+                    else {
+                        if(pMotor->tarVel > 0 && devPos >= pMotor->moveInfo.tarPos){
+                            LOG_DEBUG("%s -MOVE POS- %d done, now pos %d", xp_get_device_str(i), pMotor->moveInfo.tarPos, devPos);
+                            xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
+                        }
+                        else if(pMotor->tarVel < 0 && devPos <= pMotor->moveInfo.tarPos){
+                            LOG_DEBUG("%s -MOVE POS- %d done, now pos %d", xp_get_device_str(i), pMotor->moveInfo.tarPos, devPos);
+                            xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
+                        }
+                    }
                 }
-                else if(BACK_RIGHT_MOVE_MATCH_ID == pMotor->drvIndex){
-                    if(moveOverTimeVel < 0)      osal_error_upload(8035, true);
+                else if(MOTOR_STA_MOVE_TIME == pMotor->moveInfo.state){
+                    if (is_dev_limit_touched_filter(pMotor) || 0 == pMotor->tarVel) {
+                        if(0 != pMotor->tarVel){
+                            LOG_UPLOAD("%s -MOVE TIME- touch limit, stop move", xp_get_device_str(i));
+                        }
+                        xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
+                    }
+                    else if (get_diff_ms(pMotor->moveInfo.timeStamp) > pMotor->moveInfo.moveTime) {
+                        if(0 != pMotor->tarVel){
+                            LOG_UPLOAD("%s -MOVE TIME- time out, stop move", xp_get_device_str(i));
+                        }
+                        xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
+                    }
+                    else if (get_diff_ms(pMotor->moveInfo.timeStamp) > (pMotor->moveInfo.actionOverTime + pauseTime)) {
+                        LOG_UPLOAD("%s -MOVE TIME- over time, stop move", xp_get_device_str(i));
+                        xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
+                        isMoveOverTime = true;
+                        moveOverTimeVel = pMotor->tarVel;
+                    }
+                    else if (pMotor->lastVel != pMotor->tarVel) {       //仅当在命令发生变化后才对驱动器发出命令
+                        if (0 == xp_dev_motor_run(pMotor)) {
+                            pMotor->lastVel = pMotor->tarVel;
+                            LOG_UPLOAD("%s -MOVE TIME- velocity change to %d", xp_get_device_str(i), pMotor->tarVel);
+                        }
+                    }
                 }
-                else if(GATE_1_MACH_ID == pMotor->drvIndex){
-                    if(moveOverTimeVel > 0)      osal_error_upload(8040, true);
-                    else if(moveOverTimeVel < 0) osal_error_upload(8041, true);
+                else if(MOTOR_STA_PAUSE == pMotor->moveInfo.state){
+                    if (pMotor->moveInfo.isFirstSwitch) {
+                        pMotor->lastVel = pMotor->tarVel;
+                        pMotor->tarVel = 0;
+                        if (0 == xp_dev_motor_run(pMotor)) {
+                            pMotor->moveInfo.isFirstSwitch = false;
+                            pauseStartStamp = aos_now_ms();
+                        }
+                        else{
+                            LOG_UPLOAD("Motor pause failed");
+                        }
+                    }
+                    else {
+                        pauseTime = get_diff_ms(pauseStartStamp);
+                    }
+                }
+                else if(MOTOR_STA_RESUME == pMotor->moveInfo.state){
+                    pMotor->tarVel = pMotor->lastVel;
+                    xp_osal_motor_state_set(pMotor, pMotor->moveInfo.lastState);
+                }
+                else if(MOTOR_STA_FAULT == pMotor->moveInfo.state){
+                    //
+                }
+                //切换到stop状态立即执行
+                if(MOTOR_STA_STOP == pMotor->moveInfo.state){
+                    pMotor->tarVel = 0;
+                    if (0 == xp_dev_motor_run(pMotor)) {
+                        pMotor->lastVel = 0;
+                        xp_osal_motor_state_set(pMotor, MOTOR_STA_IDLE);
+                        LOG_DEBUG("%s stop success", xp_get_device_str(i));
+                    }
+                    else{
+                        LOG_UPLOAD("%s change stop err", xp_get_device_str(i));
+                    }
+                }
+
+                //无脉冲计数的电机跳过后面的判定
+                if(ACTION_TYPE_ROTATION == pMotor->actionType || pMotor->moveInfo.haveEncode == false){
+                    continue;
+                }
+                if(CONVEYOR_1_MATCH_ID == pMotor->drvIndex) continue;       //用不到1号输送带脉冲，不检测
+                devPos = xp_osal_get_dev_pos(pMotor->drvIndex);
+                /* 码盘计数异常检测（电机在运动过程中多次检测码盘值无变化或非运动状态下多次检测码盘值变化，认为异常） */
+                if(MOTOR_STA_MOVE == pMotor->moveInfo.state || MOTOR_STA_MOVE_FORE == pMotor->moveInfo.state 
+                || MOTOR_STA_MOVE_POS == pMotor->moveInfo.state || MOTOR_STA_MOVE_TIME == pMotor->moveInfo.state){
+                    if(!encSta.isMoveSta[i]){          //运动状态改变，清除错误计数，避免切换过程中误计
+                        encSta.errCnt[i] = 0;
+                        encSta.isMoveSta[i] = true;
+                    }
+                }
+                else{
+                    if(encSta.isMoveSta[i]){
+                        encSta.errCnt[i] = 0;
+                        encSta.isMoveSta[i] = false;
+                    }
+                }
+                //龙门15Hz 4s走24个脉冲，167ms走一个脉冲，判定周期大于这个值，保证移动状态下，每次判定脉冲值都有变化
+                if(devPos != NULL_ENCODER && get_diff_ms(encSta.checkTimeStamp[i]) > 400){
+                    encSta.checkTimeStamp[i] = aos_now_ms();
+                    if(MOTOR_STA_MOVE == pMotor->moveInfo.state || MOTOR_STA_MOVE_FORE == pMotor->moveInfo.state 
+                    || MOTOR_STA_MOVE_POS == pMotor->moveInfo.state || MOTOR_STA_MOVE_TIME == pMotor->moveInfo.state){
+                        (lastDevPos[i] == devPos) ? encSta.errCnt[i]++ : (encSta.errCnt[i] = 0);
+                    }
+                    else{
+                        (lastDevPos[i] != devPos) ? encSta.errCnt[i]++ : (encSta.errCnt[i] = 0);
+                    }
+                    if(encSta.errCnt[i] > 10){
+                        encSta.errCnt[i] = 0;
+                        xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
+                        if(osal_error_upload != NULL){
+                            switch (pMotor->drvIndex)
+                            {
+                            case CONVEYOR_1_MATCH_ID:       osal_error_upload(8112, true);  break;
+                            case CONVEYOR_2_MATCH_ID:       osal_error_upload(8113, true);  break;
+                            case CONVEYOR_3_MATCH_ID:       osal_error_upload(8114, true);  break;
+                            case LIFTER_MATCH_ID:           osal_error_upload(300, true);   break;
+                            case FRONT_LEFT_MOVE_MATCH_ID:  osal_error_upload(310, true);   break;
+                            case FRONT_RIGHT_MOVE_MATCH_ID: osal_error_upload(311, true);   break;
+                            case BACK_LEFT_MOVE_MATCH_ID:   osal_error_upload(312, true);   break;
+                            case BACK_RIGHT_MOVE_MATCH_ID:  osal_error_upload(313, true);   break;
+                            default:
+                                break;
+                            }
+                        }
+                        LOG_UPLOAD("%s encoder err, dev state %d, dev pos %d", xp_get_device_str(i), pMotor->moveInfo.state, devPos);
+                    }
+                    lastDevPos[i] = devPos;
+                }
+                //动作超时异常判定
+                if(osal_error_upload != NULL && isMoveOverTime){
+                    if(LIFTER_MATCH_ID == pMotor->drvIndex){
+                        if(moveOverTimeVel > 0)      osal_error_upload(8031, true);
+                        else if(moveOverTimeVel < 0) osal_error_upload(8030, true);
+                    }
+                    else if(FRONT_LEFT_MOVE_MATCH_ID == pMotor->drvIndex){
+                        if(moveOverTimeVel < 0)      osal_error_upload(8032, true);
+                    }
+                    else if(FRONT_RIGHT_MOVE_MATCH_ID == pMotor->drvIndex){
+                        if(moveOverTimeVel < 0)      osal_error_upload(8033, true);
+                    }
+                    else if(BACK_LEFT_MOVE_MATCH_ID == pMotor->drvIndex){
+                        if(moveOverTimeVel < 0)      osal_error_upload(8034, true);
+                    }
+                    else if(BACK_RIGHT_MOVE_MATCH_ID == pMotor->drvIndex){
+                        if(moveOverTimeVel < 0)      osal_error_upload(8035, true);
+                    }
+                    else if(GATE_1_MACH_ID == pMotor->drvIndex){
+                        if(moveOverTimeVel > 0)      osal_error_upload(8040, true);
+                        else if(moveOverTimeVel < 0) osal_error_upload(8041, true);
+                    }
                 }
             }
         }
@@ -2283,16 +2287,23 @@ void xp_osal_dev_run_thread(void* arg)
  */
 int xp_osal_brush_rotation(Type_DriverIndex_Enum id, int vel)
 {
+    int ret = -1;
+
+    aos_mutex_lock(&motorRunMutex, 500);
     for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
     {
         if (ACTION_TYPE_ROTATION == MotorDev_Table[i].actionType && id == MotorDev_Table[i].drvIndex) {
             MotorDev_Table[i].tarVel = vel;
             LOG_DEBUG("Rotation %s speed change to %d", xp_get_device_str(i), MotorDev_Table[i].tarVel);
-            return xp_osal_motor_state_set(&MotorDev_Table[i], (0 == MotorDev_Table[i].tarVel) ? MOTOR_STA_IDLE : MOTOR_STA_ROTATION);
+            ret = xp_osal_motor_state_set(&MotorDev_Table[i], (0 == MotorDev_Table[i].tarVel) ? MOTOR_STA_IDLE : MOTOR_STA_ROTATION);
+            break;
+        }
+        else if((MOTOR_TABLE_NUM - 1) == i){
+            LOG_UPLOAD("Driver Index %d, not found, please check...", id);
         }
     }
-    LOG_UPLOAD("Driver Index %d, not found, please check...", id);
-    return -1;
+    aos_mutex_unlock(&motorRunMutex);
+    return ret;
 }
 
 /**
@@ -2305,6 +2316,7 @@ int xp_osal_move_run(Type_DriverIndex_Enum id, int vel)
 {
     int ret = -1;
 
+    aos_mutex_lock(&motorRunMutex, 500);
     for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
     {
         if (ACTION_TYPE_MOVE == MotorDev_Table[i].actionType && id == MotorDev_Table[i].drvIndex) {
@@ -2312,13 +2324,16 @@ int xp_osal_move_run(Type_DriverIndex_Enum id, int vel)
             if(0 == ret){
                 MotorDev_Table[i].tarVel = vel;
                 MotorDev_Table[i].moveInfo.timeStamp = aos_now_ms();
-                LOG_UPLOAD("Move %s speed change to %d", xp_get_device_str(i), MotorDev_Table[i].tarVel);
+                LOG_UPLOAD("Move %s state %d, speed change to %d", xp_get_device_str(i), MotorDev_Table[i].moveInfo.state, MotorDev_Table[i].tarVel);
             }
-            return ret;
+            break;
+        }
+        else if((MOTOR_TABLE_NUM - 1) == i){
+            LOG_UPLOAD("Driver Index %d, not found, please check...", id);
         }
     }
-    LOG_UPLOAD("Driver Index %d, not found, please check...", id);
-    return -1;
+    aos_mutex_unlock(&motorRunMutex);
+    return ret;
 }
 
 /**
@@ -2331,6 +2346,8 @@ int xp_osal_move_run(Type_DriverIndex_Enum id, int vel)
 int xp_osal_force_move_run(Type_DriverIndex_Enum id, int vel, uint16_t time)
 {
     int ret = -1;
+
+    aos_mutex_lock(&motorRunMutex, 500);
     for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
     {
         if (ACTION_TYPE_MOVE == MotorDev_Table[i].actionType && id == MotorDev_Table[i].drvIndex) {
@@ -2341,11 +2358,14 @@ int xp_osal_force_move_run(Type_DriverIndex_Enum id, int vel, uint16_t time)
                 MotorDev_Table[i].moveInfo.timeStamp = aos_now_ms();
                 LOG_DEBUG("Force move %s speed change to %d, move time %d", xp_get_device_str(i), MotorDev_Table[i].tarVel, MotorDev_Table[i].moveInfo.forceMoveTime);
             }
-            return ret;
+            break;
+        }
+        else if((MOTOR_TABLE_NUM - 1) == i){
+            LOG_UPLOAD("Driver Index %d, not found, please check...", id);
         }
     }
-    LOG_UPLOAD("Driver Index %d, not found, please check...", id);
-    return -1;
+    aos_mutex_unlock(&motorRunMutex);
+    return ret;
 }
 /**
  * @brief       电机按指定速度移动到指定位置
@@ -2359,6 +2379,7 @@ int xp_osal_move_pos(Type_DriverIndex_Enum id, int vel, int32_t tarPos)
     int32_t nowPos = 0;
     int ret = -1;
 
+    aos_mutex_lock(&motorRunMutex, 500);
     for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
     {
         if (ACTION_TYPE_MOVE == MotorDev_Table[i].actionType && id == MotorDev_Table[i].drvIndex) {
@@ -2388,11 +2409,14 @@ int xp_osal_move_pos(Type_DriverIndex_Enum id, int vel, int32_t tarPos)
                     LOG_UPLOAD("Pos move %s speed change to %d, pos %d to targ pos %d", xp_get_device_str(i), MotorDev_Table[i].tarVel, nowPos, MotorDev_Table[i].moveInfo.tarPos);
                 }
             }
-            return ret;
+            break;
+        }
+        else if((MOTOR_TABLE_NUM - 1) == i){
+            LOG_UPLOAD("Driver Index %d, not found, please check...", id);
         }
     }
-    LOG_UPLOAD("Driver Index %d, not found, please check...", id);
-    return -1;
+    aos_mutex_unlock(&motorRunMutex);
+    return ret;
 }
 
 /**
@@ -2405,6 +2429,8 @@ int xp_osal_move_pos(Type_DriverIndex_Enum id, int vel, int32_t tarPos)
 int xp_osal_move_time(Type_DriverIndex_Enum id, int vel, uint16_t time)
 {
     int ret = -1;
+
+    aos_mutex_lock(&motorRunMutex, 500);
     for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
     {
         if (ACTION_TYPE_MOVE == MotorDev_Table[i].actionType && id == MotorDev_Table[i].drvIndex) {
@@ -2413,13 +2439,16 @@ int xp_osal_move_time(Type_DriverIndex_Enum id, int vel, uint16_t time)
                 MotorDev_Table[i].tarVel = vel;
                 MotorDev_Table[i].moveInfo.moveTime = time;
                 MotorDev_Table[i].moveInfo.timeStamp = aos_now_ms();
-                LOG_UPLOAD("Time move %s speed change to %d, move time %d", xp_get_device_str(i), MotorDev_Table[i].tarVel, MotorDev_Table[i].moveInfo.moveTime);
+                LOG_UPLOAD("Time move %s state %d, speed change to %d, move time %d", xp_get_device_str(i), MotorDev_Table[i].moveInfo.state, MotorDev_Table[i].tarVel, MotorDev_Table[i].moveInfo.moveTime);
             }
-            return ret;
+            break;
+        }
+        else if((MOTOR_TABLE_NUM - 1) == i){
+            LOG_UPLOAD("Driver Index %d, not found, please check...", id);
         }
     }
-    LOG_UPLOAD("Driver Index %d, not found, please check...", id);
-    return -1;
+    aos_mutex_unlock(&motorRunMutex);
+    return ret;
 }
 
 /**
@@ -2429,15 +2458,22 @@ int xp_osal_move_time(Type_DriverIndex_Enum id, int vel, uint16_t time)
  */
 int xp_osal_move_pause(Type_DriverIndex_Enum id)
 {
+    int ret = -1;
+
+    aos_mutex_lock(&motorRunMutex, 500);
     for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
     {
         if (ACTION_TYPE_MOVE == MotorDev_Table[i].actionType && id == MotorDev_Table[i].drvIndex) {
             LOG_DEBUG("%s pause", xp_get_device_str(i));
-            return xp_osal_motor_state_set(&MotorDev_Table[i], MOTOR_STA_PAUSE);
+            ret = xp_osal_motor_state_set(&MotorDev_Table[i], MOTOR_STA_PAUSE);
+            break;
+        }
+        else if((MOTOR_TABLE_NUM - 1) == i){
+            LOG_UPLOAD("Driver Index %d, not found, please check...", id);
         }
     }
-    LOG_UPLOAD("Driver Index %d, not found, please check...", id);
-    return -1;
+    aos_mutex_unlock(&motorRunMutex);
+    return ret;
 }
 
 /**
@@ -2447,15 +2483,22 @@ int xp_osal_move_pause(Type_DriverIndex_Enum id)
  */
 int xp_osal_move_resume(Type_DriverIndex_Enum id)
 {
+    int ret = -1;
+
+    aos_mutex_lock(&motorRunMutex, 500);
     for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
     {
         if (ACTION_TYPE_MOVE == MotorDev_Table[i].actionType && id == MotorDev_Table[i].drvIndex) {
             LOG_DEBUG("%s resume", xp_get_device_str(i));
-            return xp_osal_motor_state_set(&MotorDev_Table[i], MOTOR_STA_RESUME);
+            ret = xp_osal_motor_state_set(&MotorDev_Table[i], MOTOR_STA_RESUME);
+            break;
+        }
+        else if((MOTOR_TABLE_NUM - 1) == i){
+            LOG_UPLOAD("Driver Index %d, not found, please check...", id);
         }
     }
-    LOG_UPLOAD("Driver Index %d, not found, please check...", id);
-    return -1;
+    aos_mutex_unlock(&motorRunMutex);
+    return ret;
 }
 
 /**
@@ -2465,14 +2508,21 @@ int xp_osal_move_resume(Type_DriverIndex_Enum id)
  */
 int xp_osal_move_stop(Type_DriverIndex_Enum id)
 {
+    int ret = -1;
+
+    aos_mutex_lock(&motorRunMutex, 500);
     for (uint8_t i = 0; i < MOTOR_TABLE_NUM; i++)
     {
         if (ACTION_TYPE_MOVE == MotorDev_Table[i].actionType && id == MotorDev_Table[i].drvIndex) {
-            return xp_osal_motor_state_set(&MotorDev_Table[i], MOTOR_STA_STOP);
+            ret = xp_osal_motor_state_set(&MotorDev_Table[i], MOTOR_STA_STOP);
+            break;
+        }
+        else if((MOTOR_TABLE_NUM - 1) == i){
+            LOG_UPLOAD("Driver Index %d, not found, please check...", id);
         }
     }
-    LOG_UPLOAD("Driver Index %d, not found, please check...", id);
-    return -1;
+    aos_mutex_unlock(&motorRunMutex);
+    return ret;
 }
 
 /*                                                         =======================                                                         */
