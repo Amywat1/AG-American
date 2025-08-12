@@ -153,9 +153,10 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     {8232,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //右后刷归位超时
     {8233,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //1#道闸归位超时
     {8234,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //2#道闸归位超时
+    {9000,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //未知异常
 
     {9001,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //前车轮在1#_2#输送带处打滑
-    {9002,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //后车轮在1#_2#输送带处打滑
+    {9002,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //后车轮在1#_2#输送带处打滑
     // {9003,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //前车轮在2#_3#输送带处打滑
     // {9004,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //后车轮在2#_3#输送带处打滑
     {8140,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //车辆出口处打滑，超过规定输送距离

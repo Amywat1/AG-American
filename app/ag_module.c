@@ -513,8 +513,9 @@ void vehicle_skid_detect_thread(void *arg)
                     }
                     else{
                         isSignalIntrudeTriggered = true;
-                        if(!isHeadWheelSkidIn12Conveyor && !carWash[i].isBackWheelSkidIn12
-                        && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 43000){     //超过一定时间遮挡了防闯，但是一直没到前侧刷位置，认为后轮打滑
+                        // if(!isHeadWheelSkidIn12Conveyor && !carWash[i].isBackWheelSkidIn12
+                        if(!carWash[i].isBackWheelSkidIn12
+                        && get_diff_ms(carWash[i].wheelSkidTimeStamp) > 38000){     //超过一定时间遮挡了防闯，但是一直没到前侧刷位置，认为后轮打滑
                             carWash[i].isBackWheelSkidIn12 = true;      //后轮打滑
                             set_error_state(9002, true);
                             LOG_UPLOAD("Car %d back wheel skid in 1#_2# conveyor", i);
@@ -1680,7 +1681,8 @@ static int module_side_brush_both_move_to_position(Type_SideBrushPos_Enum pos)
         if(brush[BRUSH_FRONT_LEFT].current > (brush[BRUSH_FRONT_LEFT].pressWarning - 20) || brush[BRUSH_FRONT_RIGHT].current > (brush[BRUSH_FRONT_RIGHT].pressWarning - 20)
         || is_signal_filter_trigger(SIGNAL_FL_BRUSH_CROOKED) || is_signal_filter_trigger(SIGNAL_FR_BRUSH_CROOKED)){
             isSideBrushCantMoveToPose = true;
-            LOG_UPLOAD("Side brush current too high, can not move to target position, jump to move zero");
+            LOG_UPLOAD("Side brush current too high left %d, right %d, can not move to target position, jump to move zero", 
+                        brush[BRUSH_FRONT_LEFT].current, brush[BRUSH_FRONT_RIGHT].current);
             stepSta.isModuleDriverExecuted = false;
             return module_side_putters_open();  //检测到无法到达目标位置，则不再往目标位置移动，移动到虚拟开位
         }
