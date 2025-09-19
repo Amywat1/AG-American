@@ -92,7 +92,7 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     // {8105,   false,      false,      0,      500,                500,                E_WARNING}, //相序报警
     {8106,   false,      false,      0,      5000,               500,                E_WARNING}, //水压不足
     {8107,   false,      false,      0,      500,                500,                E_WARNING}, //高度超高
-    {8108,   false,      false,      0,      2000,               500,                E_WARNING}, //顶刷旋转电流超高
+    {8108,   false,      false,      0,      3000,               500,                E_WARNING}, //顶刷旋转电流超高
     {8109,   false,      false,      0,      500,                500,                E_WARNING}, //车头位置丢失报警（侧刷合30S未检测到车头）
     {8110,   false,      false,      0,      500,                500,                E_WARNING}, //前侧刷启动时低位报警（洗车头过程中侧刷合检测）
     {8111,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //洗车超时报警
@@ -108,10 +108,10 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     {8116,   false,      false,      0,      500,                500,                E_ERROR},   //1#道闸开关同时亮
     {8117,   false,      false,      0,      500,                500,                E_ERROR},   //2#道闸开关同时亮
     {8118,   false,      false,      0,      500,                500,                E_ERROR},   //顶刷上下同时亮
-    {8119,   false,      false,      0,      2000,               500,                E_ERROR},   //左前刷旋转电流异常
-    {8120,   false,      false,      0,      2000,               500,                E_ERROR},   //右前刷旋转电流异常
-    {8121,   false,      false,      0,      2000,               500,                E_ERROR},   //左后刷旋转电流异常
-    {8122,   false,      false,      0,      2000,               500,                E_ERROR},   //右后刷旋转电流异常
+    {8119,   false,      false,      0,      2500,               500,                E_ERROR},   //左前刷旋转电流异常
+    {8120,   false,      false,      0,      2500,               500,                E_ERROR},   //右前刷旋转电流异常
+    {8121,   false,      false,      0,      2500,               500,                E_ERROR},   //左后刷旋转电流异常
+    {8122,   false,      false,      0,      2500,               500,                E_ERROR},   //右后刷旋转电流异常
     // {8123,   false,      false,      0,      500,                500,                E_WARNING}, //后裙边电机过载（报警但延迟停机）
     // {8124,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //左后裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
     // {8125,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_WARNING}, //右后裙边刷气缸回超时未检测到限位信号（报警但延迟停机）
@@ -144,7 +144,8 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     {8211,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机3变频器故障（报警不停机）
     {8212,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机4变频器故障（报警不停机）
     {8213,   false,      false,      0,      500,                500,                E_NOTICE_AUTO_CLRAR},   //风机5变频器故障（报警不停机）
-    {8214,   false,      false,      0,      500,                500,                E_WARNING}, //裙边刷变频器故障（报警但延迟停机）
+    {8214,   false,      false,      0,      500,                500,                E_WARNING}, //左裙边刷变频器故障（报警但延迟停机）
+    {8215,   false,      false,      0,      500,                500,                E_WARNING}, //右裙边刷变频器故障（报警但延迟停机）
     {329,    false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //升降归位超时  （这里的单个超时报警只通知，处理的话有一个总的归位超时报警会处理）
     {8229,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //左前刷归位超时
     {8230,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //右前刷归位超时
@@ -152,6 +153,12 @@ Type_ErrStaInfo_Def ErrInfo_Table[] = {
     {8232,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //右后刷归位超时
     {8233,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //1#道闸归位超时
     {8234,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //2#道闸归位超时
+
+    {9001,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //前车轮在1#_2#输送带处打滑
+    {9002,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //后车轮在1#_2#输送带处打滑
+    // {9003,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //前车轮在2#_3#输送带处打滑
+    // {9004,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_NOTICE},  //后车轮在2#_3#输送带处打滑
+    {8140,   false,      false,      0,      NDEFINE_TIME,       NDEFINE_TIME,       E_ERROR},   //车辆出口处打滑，超过规定输送距离
 };
 
 //错误状态定义
@@ -291,31 +298,31 @@ static bool check_ag_error(bool isEmc){
         switch (ErrInfo_Table[i].code)
         {
         case 8019:   //顶刷旋转变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD5) && osal_is_io_trigger(BOARD5_INPUT_TOP_BRUSH_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD5) && osal_is_io_trigger(BOARD5_INPUT_TOP_BRUSH_ERR)) ? true : false;
             break;
         case 8020:   //顶刷上下变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD5) && osal_is_io_trigger(BOARD5_INPUT_LIFTER_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD5) && osal_is_io_trigger(BOARD5_INPUT_LIFTER_ERR)) ? true : false;
             break;
         case 8021:   //1#输送带变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_CONVEYOR_1_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_CONVEYOR_1_ERR)) ? true : false;
             break;
         case 8022:   //2#输送带变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_CONVEYOR_2_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_CONVEYOR_2_ERR)) ? true : false;
             break;
         case 8023:   //3#输送带变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_CONVEYOR_3_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_CONVEYOR_3_ERR)) ? true : false;
             break;
         case 8024:   //左前刷旋转变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD3) && osal_is_io_trigger(BOARD3_INPUT_FRONT_LEFT_ROTATION_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD3) && osal_is_io_trigger(BOARD3_INPUT_FRONT_LEFT_ROTATION_ERR)) ? true : false;
             break;
         case 8025:   //右前刷旋转变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD3) && osal_is_io_trigger(BOARD3_INPUT_FRONT_RIGHT_ROTATION_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD3) && osal_is_io_trigger(BOARD3_INPUT_FRONT_RIGHT_ROTATION_ERR)) ? true : false;
             break;
         case 8026:   //左后刷旋转变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD3) && osal_is_io_trigger(BOARD3_INPUT_BACK_LEFT_ROTATION_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD3) && osal_is_io_trigger(BOARD3_INPUT_BACK_LEFT_ROTATION_ERR)) ? true : false;
             break;
         case 8027:   //右后刷旋转变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD3) && osal_is_io_trigger(BOARD3_INPUT_BACK_RIGHT_ROTATION_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD3) && osal_is_io_trigger(BOARD3_INPUT_BACK_RIGHT_ROTATION_ERR)) ? true : false;
             break;
         case 8036:   //顶刷左侧松动报警
             isError = (errNeedFlag.isDetectLifterLooseEnable
@@ -498,38 +505,40 @@ static bool check_ag_error(bool isEmc){
                     && xp_io_get_online_sta(IO_BOARD1) && osal_is_io_trigger(BOARD1_INPUT_DRIER_LESS)) ? true : false;
             break;
         case 8204:   //左前刷开合电机故障
-            isError = (xp_io_get_online_sta(IO_BOARD2) && osal_is_io_trigger(BOARD2_INPUT_FRONT_LEFT_MOVE_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD2) && osal_is_io_trigger(BOARD2_INPUT_FRONT_LEFT_MOVE_ERR)) ? true : false;
             break;
         case 8205:   //右前刷开合电机故障
-            isError = (xp_io_get_online_sta(IO_BOARD2) && osal_is_io_trigger(BOARD2_INPUT_FRONT_RIGHT_MOVE_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD2) && osal_is_io_trigger(BOARD2_INPUT_FRONT_RIGHT_MOVE_ERR)) ? true : false;
             break;
         case 8206:   //左后刷开合电机故障
-            isError = (xp_io_get_online_sta(IO_BOARD2) && osal_is_io_trigger(BOARD2_INPUT_BACK_LEFT_MOVE_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD2) && osal_is_io_trigger(BOARD2_INPUT_BACK_LEFT_MOVE_ERR)) ? true : false;
             break;
         case 8207:   //右后刷开合电机故障
-            isError = (xp_io_get_online_sta(IO_BOARD2) && osal_is_io_trigger(BOARD2_INPUT_BACK_RIGHT_MOVE_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD2) && osal_is_io_trigger(BOARD2_INPUT_BACK_RIGHT_MOVE_ERR)) ? true : false;
             break;
         case 8208:   //顶部摆动变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD5) && osal_is_io_trigger(BOARD5_INPUT_TOP_SWING_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD5) && osal_is_io_trigger(BOARD5_INPUT_TOP_SWING_ERR)) ? true : false;
             break;
         case 8209:   //风机1变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_DRYER_1_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_DRYER_1_ERR)) ? true : false;
             break;
         case 8210:   //风机2变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_DRYER_2_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_DRYER_2_ERR)) ? true : false;
             break;
         case 8211:   //风机3变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_DRYER_3_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_DRYER_3_ERR)) ? true : false;
             break;
         case 8212:   //风机4变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_DRYER_4_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_DRYER_4_ERR)) ? true : false;
             break;
         case 8213:   //风机5变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_DRYER_5_ERR)) ? true : false;
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD0) && osal_is_io_trigger(BOARD0_INPUT_DRYER_5_ERR)) ? true : false;
             break;
-        case 8014:   //裙边刷变频器故障
-            isError = (xp_io_get_online_sta(IO_BOARD5) 
-            && (osal_is_io_trigger(BOARD5_INPUT_FRONT_LEFT_SKIRT_ERR) || osal_is_io_trigger(BOARD5_INPUT_FRONT_RIGHT_SKIRT_ERR))) ? true : false;
+        case 8214:   //左裙边刷变频器故障
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD5) && osal_is_io_trigger(BOARD5_INPUT_FRONT_LEFT_SKIRT_ERR)) ? true : false;
+            break;
+        case 8215:   //右裙边刷变频器故障
+            isError = (!isEmc && xp_io_get_online_sta(IO_BOARD5) && osal_is_io_trigger(BOARD5_INPUT_FRONT_RIGHT_SKIRT_ERR)) ? true : false;
             break;
         default:
             continue;
@@ -750,8 +759,9 @@ static void xp_check_error_thread(void *arg)
                         uint32_t errCode = 0xFFFFFFFF;
                         xp_lnovance_get_error_code(14, &errCode);
                         LOG_UPLOAD("SKIRT_BRUSH_LEFT err code %d", errCode);
-                        errCode = 0xFFFFFFFF;
-                        aos_msleep(10);             //临时添加
+                    }
+                    if(8215 == ErrInfo_Table[i].code){
+                        uint32_t errCode = 0xFFFFFFFF;
                         xp_lnovance_get_error_code(15, &errCode);
                         LOG_UPLOAD("SKIRT_BRUSH_RIGHT err code %d", errCode);
                     }

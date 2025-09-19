@@ -1416,7 +1416,7 @@ Type_SignalStaInfo_Def SignalInfo_Table[] = {
     {SIGNAL_STOP,               BOARD4_INPUT_CAR_STOP_SIGNAL,           SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_ENTRANCE,           BOARD4_INPUT_ENTRANCE_SIGNAL,           SIGNAL_STABLE,  20,   0,  0},
     {SIGNAL_REAR_END_PROTECT,   BOARD0_INPUT_SIGNAL_REAR_END_PROTECT,   SIGNAL_STABLE,  20,   0,  0},
-    {SIGNAL_AVOID_INTRUDE,      BOARD4_INPUT_AVOID_INTRUDE_SIGNAL,      SIGNAL_STABLE,  20,   0,  0},
+    {SIGNAL_AVOID_INTRUDE,      BOARD4_INPUT_AVOID_INTRUDE_SIGNAL,      SIGNAL_STABLE,  40,   0,  0},
     {SIGNAL_EXIT,               BOARD0_INPUT_SIGNAL_EXIT,               SIGNAL_STABLE,  25,   0,  0},
     {SIGNAL_FINISH,             BOARD0_INPUT_SIGNAL_FINISH,             SIGNAL_STABLE,  25,   0,  0},
     {SIGNAL_LIFTER_UP,          BOARD4_INPUT_LIFTER_UP,                 SIGNAL_STABLE,  20,   0,  0},
@@ -1943,8 +1943,8 @@ static bool is_dev_limit_touched(Type_MotorInfo_Def* const pMotor)
         else{
             //道闸有多个不允许执行关闭的限位信号，在这里特殊处理
             if(GATE_1_MACH_ID == pMotor->drvIndex){
-                if(is_signal_filter_trigger(SIGNAL_ALL_IN)){
-                // || is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT)){
+                if(is_signal_filter_trigger(SIGNAL_ALL_IN)
+                || is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT)){
                 // || is_signal_filter_trigger(SIGNAL_GROUND)){
                     return true;
                 }else{}//继续判断限位
@@ -2221,7 +2221,7 @@ void xp_osal_dev_run_thread(void* arg)
                 else{
                     (lastDevPos[i] != devPos) ? encSta.errCnt[i]++ : (encSta.errCnt[i] = 0);
                 }
-                if(encSta.errCnt[i] > 5){
+                if(encSta.errCnt[i] > 10){
                     encSta.errCnt[i] = 0;
                     xp_osal_motor_state_set(pMotor, MOTOR_STA_STOP);
                     if(osal_error_upload != NULL){
@@ -2568,6 +2568,12 @@ int osal_set_dev_limit_mode(Type_DriverIndex_Enum id, Type_LimitMode_Enum mode, 
     }
     LOG_UPLOAD("Set soft limit not found dev");
     return -1;
+}
+
+void set_side_brush_down_signal_limit(bool value)
+{
+    // MotorDev_Table[FRONT_LEFT_MOVE_MATCH_ID].moveInfo.ioIndexLimitCW   = value ? BOARD2_INPUT_FRONT_LEFT_BRUSH_DOWN : IO_NULL;
+    // MotorDev_Table[FRONT_RIGHT_MOVE_MATCH_ID].moveInfo.ioIndexLimitCW  = value ? BOARD2_INPUT_FRONT_RIGHT_BRUSH_DOWN : IO_NULL;
 }
 
 /**

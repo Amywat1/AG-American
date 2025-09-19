@@ -80,6 +80,7 @@ typedef enum{
 	PARK_TOO_LEFT,
 	PARK_TOO_RIGHT,
 	PARK_TOO_LONG,
+	PARK_OUT_NO_ORDER,
 	PARK_OK,
 } Type_ParkState_Enum;
 
@@ -171,7 +172,9 @@ extern void set_is_allow_next_car_wash_flag(bool value);
 extern bool get_is_allow_next_car_wash_flag(void);
 extern void set_new_order_car_id(uint8_t newOrderId, uint8_t washMode);
 extern int  get_work_state(uint8_t washId);
+extern char* get_work_proc_str(uint8_t washId);
 extern void wash_crl_variable_init(void);
+extern void clear_service_car_data(void);
 extern Type_CarProcPosInfo_Def *get_washProcPos_Obj(void);
 #endif
 

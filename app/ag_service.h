@@ -44,6 +44,7 @@ typedef enum{
 typedef struct{
     int                 orderNumber;
     int                 workState;
+    char                runningProc[200];
 } Type_ModelSts_Order_Def;
 
 //状态点位——洗车判断
@@ -95,12 +96,14 @@ typedef struct{
     int                 backLeftBrushCurrent;
     int                 backRightBrushCurrent;
     bool                isOta;
-    char                version[15];
+    char                version[30];
     char                deviceModel[15];
     int                 startCnt;
     int                 completeCnt;
     int                 failedCnt;
     int                 toadyTotalCnt;
+    int                 canRebootCnt;
+    int                 canMbCsValue;
     // int                 errCode;
 } Type_ModelSts_monitor_Def;
 

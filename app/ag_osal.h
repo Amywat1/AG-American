@@ -343,7 +343,7 @@ typedef enum {
 	AG_VOICE_CAR_STOP,                  // 请停车				（预备区）
 	AG_VOICE_WASH_START,            	// 开始洗车				（预备区）
 	AG_VOICE_CAR_TOO_LONG,            	// 车辆超长				（预备区）
-	// AG_VOICE_LEAVE_AT_ONCE,            	// 后方来车，请立即驶离	 （完成区）
+	AG_VOICE_LEAVE_AT_ONCE,            	// 后方来车，请立即驶离	 （完成区）
 	AG_VOICE_RESERVE,
 	AG_VOICE_OVER_HEIGHT,               // 车辆超高				（预备区）
 	AG_VOICE_COMPLETED,                 // 洗车已完成			（完成区）
@@ -614,4 +614,5 @@ extern int osal_set_dev_limit_mode(Type_DriverIndex_Enum id, Type_LimitMode_Enum
 extern int clear_dev_encoder(Type_DriverIndex_Enum id);
 extern void osal_error_upload_callback_regist(void (*callback)(uint16_t code, bool value));
 extern void offline_payment_callback_regist(void (*callback)(uint8_t washMode));
+extern void set_side_brush_down_signal_limit(bool value);
 #endif

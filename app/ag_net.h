@@ -14,6 +14,6 @@
 
 /* 默认属性自动上报间隔时间(单位:ms) */
 #define DEFAULT_AUTO_REPORT_INTERVAL_MS     (500)
-#define MQTT_PORPERTE_STRING_MAX_LEN        (50)
+#define MQTT_PORPERTE_STRING_MAX_LEN        (256)
 
 #endif

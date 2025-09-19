@@ -42,7 +42,7 @@ typedef struct {
     bool                    isDevMove[APP_CRL_NUM];
     aos_queue_t             cmdQueue;
     Type_PropertyNode_Def   cmd;                //指令
-    char                    appVersion[15];
+    char                    appVersion[30];
 } Type_AppInfo_Def;
 static Type_AppInfo_Def     appModule = {0};    //app点位信息
 
@@ -603,6 +603,8 @@ static void model_status_update_thread(void *arg)
 /* *************************************************************  订单状态  ************************************************************** */
         appModule.localSts.order1.workState = (appModule.localSts.order1.orderNumber != 0) ? get_work_state(1) : 0;
         appModule.localSts.order2.workState = (appModule.localSts.order2.orderNumber != 0) ? get_work_state(2) : 0;
+        strcpy(appModule.localSts.order1.runningProc, (appModule.localSts.order1.orderNumber != 0) ? get_work_proc_str(1) : "null");
+        strcpy(appModule.localSts.order2.runningProc, (appModule.localSts.order2.orderNumber != 0) ? get_work_proc_str(2) : "null");
 /* *************************************************************  洗车判断  ************************************************************** */
         appModule.localSts.washInfo.carAhead        = get_is_allow_next_car_wash_flag() ? false : true;
         appModule.localSts.washInfo.stopOk          = carInfo.isAllowToWash ? true : false;
@@ -655,6 +657,10 @@ static void model_status_update_thread(void *arg)
         appModule.localSts.minitor.frontRightBrushCurrent   = get_brush_current(BRUSH_FRONT_RIGHT);
         appModule.localSts.minitor.backLeftBrushCurrent     = get_brush_current(BRUSH_BACK_LEFT);
         appModule.localSts.minitor.backRightBrushCurrent    = get_brush_current(BRUSH_BACK_RIGHT);
+        extern uint16_t get_can_reboot_cnt(void);
+        appModule.localSts.minitor.canRebootCnt         = get_can_reboot_cnt();
+        extern uint32_t get_can_mb_cs_value(void);
+        appModule.localSts.minitor.canMbCsValue         = get_can_mb_cs_value() >> 24;  //低24位是id和数据位，不关注
 /* ************************************************************** 检测数据 *************************************************************** */
         strcpy(appModule.localSts.minitor.version, appModule.appVersion);
         strcpy(appModule.localSts.minitor.deviceModel, "AG-America");
@@ -708,7 +714,7 @@ static void model_status_update_thread(void *arg)
         appModule.localSts.sensor.fRightPutterPulse     = osal_is_io_trigger(BOARD2_INPUT_FRONT_RIGHT_MOVE_PULSE);
         appModule.localSts.sensor.bLeftPutterPulse      = osal_is_io_trigger(BOARD2_INPUT_BACK_LEFT_MOVE_PULSE);
         appModule.localSts.sensor.bRightPutterPulse     = osal_is_io_trigger(BOARD2_INPUT_BACK_RIGHT_MOVE_PULSE);
-        appModule.localSts.sensor.ground                = is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT);
+        appModule.localSts.sensor.ground                = !is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT);
         // appModule.localSts.sensor.gate1Err              = osal_is_io_trigger(BOARD4_INPUT_GATE_1_OVERLOAD);
         // appModule.localSts.sensor.sewageHigh            = osal_is_io_trigger(BOARD1_INPUT_SEWAGE_HIGH);
         appModule.localSts.sensor.shampooLess           = osal_is_io_trigger(BOARD1_INPUT_SHAMPOO_LESS_BULE);
@@ -1016,11 +1022,12 @@ void model_cmd_executed_thread(void *arg)
             if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_electrical_reset", 0);
             break;
         case CMD_CANCEL_ORDER:
-            //取消当前最新未启动订单
-            for (uint8_t i = 0; i < MAX_QUEUE_ORDER_NUMBER; i++)
-            {
-                memcpy(&wash.orderQueue[i], &wash.orderQueue[i + 1], sizeof(Type_OrderInfo_Def));
-            }
+            // for (uint8_t i = 0; i < MAX_QUEUE_ORDER_NUMBER; i++)
+            // {
+            //     memcpy(&wash.orderQueue[i], &wash.orderQueue[i + 1], sizeof(Type_OrderInfo_Def));
+            // }
+            //取消所有订单
+            memset(wash.orderQueue, 0, sizeof(wash.orderQueue));
             if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_cancel_order", 0);
             break;
         case CMD_FLOODLIGHT:            app_crl_dev_set(APP_CRL_FLOODLIGHT, appModule.localCmd.floodlight); break;
@@ -1236,8 +1243,8 @@ void ready_area_detection_thread(void *arg)
             carInfo.isCarInReadyArea = true;
             if(isCarWantForwardExit) isCarMoveInMachine = true;
             carOutReadyAreaTimeStamp = aos_now_ms();
-            // if(!is_signal_filter_trigger(SIGNAL_ALL_IN) && !is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT)){
-            if(!is_signal_filter_trigger(SIGNAL_ALL_IN)){
+            if(!is_signal_filter_trigger(SIGNAL_ALL_IN) && !is_signal_filter_trigger(SIGNAL_GATE_1_PROTECT)){
+            // if(!is_signal_filter_trigger(SIGNAL_ALL_IN)){
                 if(is_dev_move_sta_idle(GATE_1_MACH_ID) && !is_signal_filter_trigger(SIGNAL_GATE_1_CLOSE)){
                     gate_change_state(CRL_SECTION_1, GATE_CLOSE);
                 }
@@ -1368,7 +1375,7 @@ void ready_area_detection_thread(void *arg)
                 if(isPlayForwardVoice){
                     if(0 == carInfo.voiceCnt || get_diff_ms(carInfo.parkStaStartT) > 10000){
                         carInfo.voiceCnt++;
-                        voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_FORWARD);
+                        // voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_FORWARD);
                         carInfo.parkStaStartT = aos_now_ms();
                     }
                     if(carInfo.voiceCnt > 1){
@@ -1382,22 +1389,30 @@ void ready_area_detection_thread(void *arg)
             }
         }
         else{
-            //停车光电未触发，提示前进
-            if(PARK_TOO_BACK != carInfo.parkState){
-                carInfo.voiceCnt = 0;
-                xp_ag_osal_get()->screen.display(AG_CAR_FORWARD);
-            }
-            if(isPlayForwardVoice){
-                if(0 == carInfo.voiceCnt || get_diff_ms(carInfo.parkStaStartT) > 10000){
-                    carInfo.voiceCnt++;
-                    voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_FORWARD);
-                    carInfo.parkStaStartT = aos_now_ms();
+            //停车光电未触发，有订单时显示请前进，没有订单时显示请等待
+            if(wash.orderQueue[0].numberId != 0){
+                if(PARK_TOO_BACK != carInfo.parkState){
+                    carInfo.voiceCnt = 0;
+                    xp_ag_osal_get()->screen.display(AG_CAR_FORWARD);
                 }
-                if(carInfo.voiceCnt > 1){
-                    isPlayForwardVoice = false;
+                if(isPlayForwardVoice){
+                    if(0 == carInfo.voiceCnt || get_diff_ms(carInfo.parkStaStartT) > 10000){
+                        carInfo.voiceCnt++;
+                        // voice_play_set(AG_VOICE_POS_ENTRY, AG_VOICE_CAR_FORWARD);    //FIXME 没有听到前进的语音
+                        carInfo.parkStaStartT = aos_now_ms();
+                    }
+                    if(carInfo.voiceCnt > 1){
+                        isPlayForwardVoice = false;
+                    }
                 }
+                carInfo.parkState = PARK_TOO_BACK;
             }
-            carInfo.parkState = PARK_TOO_BACK;
+            else{
+                if(PARK_OUT_NO_ORDER != carInfo.parkState){
+                    xp_ag_osal_get()->screen.display(AG_CAR_WAIT);
+                }
+                carInfo.parkState = PARK_OUT_NO_ORDER;
+            }
         }
 
         //有订单且无车辆在预备区准备则打开1号道闸
@@ -1719,28 +1734,26 @@ void xp_service_thread(void* arg)
         //确认按键（仅手动模式下有效）
         if(appModule.localCmd.func.enableManualMode) check_button();
         //识别当前是否可以启动新订单车辆
-        if(get_is_allow_next_car_wash_flag()){
-            if(carInfo.isAllowToWash && wash.orderQueue[0].numberId != 0){  //车辆停车位置准确后等待一段时间后启动
-                // if(wash.orderQueue[0].isOnlineOrder){   //线上订单等待用户点击启动后开始洗车
-                //     if(wash.isGetStartCmd){
-                //         startWashFlag = true;
-                //     }
-                // }
-                // else{
-                    if(!isCarBeReady){
-                        isCarBeReady = true;
-                        carBeReadyTimeStamp = aos_now_ms();
-                    }
-                    else if(get_diff_ms(carBeReadyTimeStamp) > 4000){
-                        startWashFlag = true;
-                    }
-                // }
-            }
-            else{
-                isCarBeReady = false;
-                startWashFlag = false;
-                wash.isGetStartCmd = false;
-            }
+        if(carInfo.isAllowToWash && wash.orderQueue[0].numberId != 0){  //车辆停车位置准确后等待一段时间后启动
+            // if(wash.orderQueue[0].isOnlineOrder){   //线上订单等待用户点击启动后开始洗车
+            //     if(wash.isGetStartCmd){
+            //         startWashFlag = true;
+            //     }
+            // }
+            // else{
+                if(!isCarBeReady){
+                    isCarBeReady = true;
+                    carBeReadyTimeStamp = aos_now_ms();
+                }
+                else if(get_is_allow_next_car_wash_flag() && get_diff_ms(carBeReadyTimeStamp) > 4000){
+                    startWashFlag = true;
+                }
+            // }
+        }
+        else{
+            isCarBeReady = false;
+            startWashFlag = false;
+            wash.isGetStartCmd = false;
         }
         //有车结束出口显示绿灯，离开完成光电后红灯
         if(STA_IDLE == wash.state || STA_RUN == wash.state){
@@ -1791,6 +1804,10 @@ void xp_service_thread(void* arg)
                 osal_dev_io_state_change(BOARD5_OUTPUT_SIGNAL_LAMP_YELLOW,  IO_DISABLE);
                 set_is_allow_next_car_wash_flag(true);
                 // set_error_state(8126, false);
+                set_error_state(9001, false);
+                set_error_state(9002, false);
+                set_error_state(9003, false);
+                set_error_state(9004, false);
                 clearOfflineOrdeBusyCnt = 0;
                 osal_dev_io_state_change(BOARD5_OUTPUT_MACHINE_IDEL, IO_ENABLE);
                 devIdelStaTimeStamp = aos_now_ms();
@@ -1856,6 +1873,8 @@ void xp_service_thread(void* arg)
             uint8_t completeCarId = 0;
             ret = step_dev_wash(&completeCarId);
             if (RET_COMPLETE == ret) {
+                set_error_state(9003, false);   //洗车完成后清除1#_2#输送带处打滑标志
+                set_error_state(9004, false);
                 timeStamp = aos_now_ms();
                 carInfo.isCarFinishWash = true;
                 if(1 == completeCarId){
@@ -1947,6 +1966,7 @@ void xp_service_thread(void* arg)
                 if(xp_cmd_excuted_complete) xp_cmd_excuted_complete("cmd_wash_flag_2", 0);
                 set_new_car_ready_wash_falg(false);
                 stop_all_dev_run();
+                clear_service_car_data();
                 if(false == get_emc_power_off_sta()){
                     if(!is_signal_filter_trigger(SIGNAL_GATE_1_OPEN))    gate_change_state(CRL_SECTION_1, GATE_OPEN);    //首次切换到停止或异常状态，打开两个道闸
                     gate_change_state(CRL_SECTION_2, GATE_OPEN);
@@ -2026,6 +2046,9 @@ void xp_service_thread(void* arg)
                     }
                     xp_service_set_state(STA_EXCEPTION);
                 }
+            }
+            else{                                               //急停不进行归位动作
+                xp_service_set_state(STA_EXCEPTION);
             }
             break;
 
@@ -2269,6 +2292,12 @@ int xp_service_debug(char* type, char* fun, char* param)
     }
     else if (strcasecmp(type, "time") == 0){
         LOG_UPLOAD("RTC time: %s. systime: %s.", xp_time_get_string(), xp_msTostring(aos_now_ms()));
+    }
+    else if (strcasecmp(type, "test") == 0){
+        extern uint16_t get_can_reboot_cnt(void);
+        LOG_DEBUG(">>>>> reboot cnt %d", get_can_reboot_cnt());
+        extern uint32_t get_can_mb_cs_value(void);
+        LOG_DEBUG(">>>>> CS value 0x%08x", get_can_mb_cs_value());
     }
     else {
         return 0;
